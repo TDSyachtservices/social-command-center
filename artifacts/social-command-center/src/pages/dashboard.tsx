@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
+import { Link } from "wouter";
 import { mockPosts } from "@/data/mockPosts";
 import { mockComments } from "@/data/mockComments";
 import { mockAccounts } from "@/data/mockAccounts";
@@ -9,33 +9,38 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CommentStatusBadge } from "@/components/shared/CommentStatusBadge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
 
   const stats = [
-    { label: "Drafts", value: mockPosts.filter(p => p.status === "draft").length },
-    { label: "Scheduled Posts", value: mockPosts.filter(p => p.status === "scheduled").length },
-    { label: "Published This Month", value: mockPosts.filter(p => p.status === "published").length },
-    { label: "Failed Posts", value: mockPosts.filter(p => p.status === "failed").length },
-    { label: "New Comments", value: mockComments.filter(c => c.status === "new").length },
-    { label: "Unreplied", value: mockComments.filter(c => ["new", "needs_follow_up"].includes(c.status)).length },
-    { label: "Needs Follow-Up", value: mockComments.filter(c => c.status === "needs_follow_up").length },
-    { label: "Resolved Today", value: mockComments.filter(c => c.status === "resolved").length },
+    { label: "Drafts",               value: mockPosts.filter(p => p.status === "draft").length,                               href: "/posts?status=draft",               description: "Unpublished drafts" },
+    { label: "Scheduled Posts",      value: mockPosts.filter(p => p.status === "scheduled").length,                           href: "/posts?status=scheduled",           description: "Queued for publishing" },
+    { label: "Published This Month", value: mockPosts.filter(p => p.status === "published").length,                           href: "/posts?status=published",           description: "Live across platforms" },
+    { label: "Failed Posts",         value: mockPosts.filter(p => p.status === "failed").length,                              href: "/posts?status=failed",              description: "Need attention" },
+    { label: "New Comments",         value: mockComments.filter(c => c.status === "new").length,                              href: "/social-inbox?status=new",          description: "Awaiting first review" },
+    { label: "Unreplied",            value: mockComments.filter(c => ["new", "needs_follow_up"].includes(c.status)).length,   href: "/social-inbox?status=unreplied",    description: "No response sent yet" },
+    { label: "Needs Follow-Up",      value: mockComments.filter(c => c.status === "needs_follow_up").length,                  href: "/social-inbox?status=needs_follow_up", description: "Flagged for follow-up" },
+    { label: "Resolved Today",       value: mockComments.filter(c => c.status === "resolved").length,                         href: "/social-inbox?status=resolved",     description: "Closed out" },
   ];
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-            </CardContent>
-          </Card>
+          <Link key={stat.label} href={stat.href} data-testid={`stat-card-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/40 transition-all group">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
+                <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-2xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.description}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
@@ -124,7 +129,7 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Failed Actions</CardTitle>
@@ -133,7 +138,7 @@ export default function Dashboard() {
             {mockPosts.filter(p => p.status === "failed").map(post => (
               <div key={post.id} className="flex flex-col gap-1 text-sm border-b pb-2 last:border-0 last:pb-0 text-destructive">
                 <span className="font-medium">Failed to publish: {post.title}</span>
-                <Button variant="outline" size="sm" className="w-fit" onClick={() => setLocation("/posts")}>Review</Button>
+                <Button variant="outline" size="sm" className="w-fit" onClick={() => setLocation("/posts?status=failed")}>Review</Button>
               </div>
             ))}
           </CardContent>
