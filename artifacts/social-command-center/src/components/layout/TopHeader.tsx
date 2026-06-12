@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -6,27 +7,28 @@ import { SidebarNavContent } from "./SidebarNav";
 
 export function TopHeader() {
   const [location, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
 
   const getPageTitle = () => {
-    switch(location) {
-      case "/": return "Dashboard";
-      case "/create-post": return "Create Post";
-      case "/calendar": return "Calendar";
-      case "/posts": return "Posts";
-      case "/social-inbox": return "Social Inbox";
-      case "/connected-accounts": return "Connected Accounts";
-      case "/publish-logs": return "Publish Logs";
-      case "/comment-logs": return "Comment Logs";
-      case "/ai-assistant": return "AI Assistant";
-      case "/website-api": return "Website API";
-      case "/settings": return "Settings";
-      default: return "Command Center";
-    }
+    if (location === "/") return "Dashboard";
+    if (location === "/create-post") return "Create Post";
+    if (location === "/calendar") return "Calendar";
+    if (location === "/posts") return "Posts";
+    if (location === "/social-inbox") return "Social Inbox";
+    if (location === "/connected-accounts") return "Connected Accounts";
+    if (location === "/publish-logs") return "Publish Logs";
+    if (location === "/comment-logs") return "Comment Logs";
+    if (location === "/ai-assistant") return "AI Assistant";
+    if (location === "/website-api") return "Website API";
+    if (location === "/settings") return "Settings";
+    if (location.startsWith("/media-optimizer")) return "Media Optimizer";
+    if (location === "/media-library") return "Media Library";
+    return "Command Center";
   };
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-      <Sheet>
+      <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="md:hidden">
             <Menu className="h-5 w-5" />
@@ -38,10 +40,10 @@ export function TopHeader() {
           <div className="flex h-14 items-center border-b border-sidebar-border px-4 text-sidebar-foreground font-bold tracking-tight">
             Command Center
           </div>
-          <SidebarNavContent />
+          <SidebarNavContent onNavigate={() => setOpen(false)} />
         </SheetContent>
       </Sheet>
-      
+
       <div className="w-full flex justify-between items-center">
         <h1 className="text-xl font-semibold tracking-tight">{getPageTitle()}</h1>
         <div className="flex items-center gap-3">

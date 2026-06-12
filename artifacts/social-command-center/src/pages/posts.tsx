@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { mockPosts } from "@/data/mockPosts";
 import type { PostStatus } from "@/data/mockPosts";
 import { listPosts } from "@/lib/api";
@@ -30,6 +30,7 @@ const toDisplayPosts = (): DisplayPost[] =>
 
 export default function Posts() {
   const search = useSearch();
+  const [, setLocation] = useLocation();
   const params = new URLSearchParams(search);
   const initialStatus = params.get("status") || "all";
 
@@ -68,7 +69,7 @@ export default function Posts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
           {filter !== "all" && (
@@ -77,19 +78,19 @@ export default function Posts() {
             </p>
           )}
         </div>
-        <Button>Create Post</Button>
+        <Button onClick={() => setLocation("/create-post")} className="shrink-0">Create Post</Button>
       </div>
 
-      <div className="flex gap-4 items-center">
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <Input
           placeholder="Search posts..."
-          className="max-w-sm"
+          className="sm:max-w-sm"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           data-testid="input-search-posts"
         />
         <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
+          <SelectTrigger className="sm:w-[180px]" data-testid="select-status-filter">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -104,14 +105,14 @@ export default function Posts() {
       </div>
 
       <Card>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[600px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
                 <TableHead>Platforms</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Scheduled Date</TableHead>
+                <TableHead className="hidden sm:table-cell">Scheduled Date</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -125,7 +126,7 @@ export default function Posts() {
               ) : (
                 filteredPosts.map(post => (
                   <TableRow key={post.id} data-testid={`row-post-${post.id}`}>
-                    <TableCell className="font-medium max-w-[200px] truncate">{post.title}</TableCell>
+                    <TableCell className="font-medium max-w-[160px] truncate">{post.title}</TableCell>
                     <TableCell>
                       <div className="flex gap-1 flex-wrap">
                         {post.platforms.map(p => (
@@ -134,7 +135,7 @@ export default function Posts() {
                       </div>
                     </TableCell>
                     <TableCell><StatusBadge status={post.status as PostStatus} /></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
                       {post.scheduledAt ? new Date(post.scheduledAt).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell>

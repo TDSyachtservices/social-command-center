@@ -22,7 +22,11 @@ const links = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function SidebarNavContent() {
+interface SidebarNavContentProps {
+  onNavigate?: () => void;
+}
+
+export function SidebarNavContent({ onNavigate }: SidebarNavContentProps) {
   const [location] = useLocation();
 
   return (
@@ -34,13 +38,14 @@ export function SidebarNavContent() {
             <Link
               key={link.href}
               href={link.href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
               )}
               data-testid={`nav-${link.label.toLowerCase().replace(/\s+/g, '-')}`}
             >
-              <link.icon className={cn("h-4 w-4", isActive ? "text-sidebar-primary" : "text-sidebar-foreground/70")} />
+              <link.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-sidebar-primary" : "text-sidebar-foreground/70")} />
               {link.label}
             </Link>
           );

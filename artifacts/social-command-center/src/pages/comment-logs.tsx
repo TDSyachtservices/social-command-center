@@ -61,11 +61,11 @@ export default function CommentLogs() {
       </div>
 
       <Card>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[750px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Date & Time</TableHead>
+                <TableHead className="whitespace-nowrap">Date & Time</TableHead>
                 <TableHead>Platform</TableHead>
                 <TableHead>Account</TableHead>
                 <TableHead>Action</TableHead>
@@ -78,24 +78,24 @@ export default function CommentLogs() {
             <TableBody>
               {logs.map(log => (
                 <TableRow key={log.id}>
-                  <TableCell className="whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm">{new Date(log.timestamp).toLocaleString()}</TableCell>
                   <TableCell><PlatformBadge platform={log.platform as any} showText={false} /></TableCell>
-                  <TableCell className="truncate max-w-[150px]">{log.account}</TableCell>
-                  <TableCell>{log.actionType.replace(/_/g, ' ')}</TableCell>
+                  <TableCell className="truncate max-w-[140px]">{log.account}</TableCell>
+                  <TableCell className="whitespace-nowrap">{log.actionType.replace(/_/g, ' ')}</TableCell>
                   <TableCell>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      log.status === "success" ? "bg-green-100 text-green-800" :
-                      log.status === "failed" ? "bg-red-100 text-red-800" :
-                      "bg-blue-100 text-blue-800"
+                    <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
+                      log.status === "success" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
+                      log.status === "failed" ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" :
+                      "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
                     }`}>
                       {log.status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-xs max-w-[150px] truncate" title={log.relatedPost || log.relatedCommenter || ""}>
-                    {log.relatedCommenter || log.relatedPost || "-"}
+                  <TableCell className="text-xs max-w-[140px] truncate" title={log.relatedPost || log.relatedCommenter || ""}>
+                    {log.relatedCommenter || log.relatedPost || "—"}
                   </TableCell>
-                  <TableCell className="max-w-[200px] truncate text-xs text-destructive" title={log.errorMessage || ""}>
-                    {log.errorMessage || "-"}
+                  <TableCell className="max-w-[180px] truncate text-xs text-destructive" title={log.errorMessage || ""}>
+                    {log.errorMessage || "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     {log.status === "failed" && (
