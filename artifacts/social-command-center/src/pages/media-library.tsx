@@ -5,6 +5,16 @@ import { mockMediaAssets } from "@/data/mockMedia";
 import { listMedia } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { mockAnalyzeMedia } from "@/lib/mockActions";
 
 type DisplayAsset = {
@@ -38,6 +48,7 @@ export default function MediaLibrary() {
   const [showUpload, setShowUpload] = useState(false);
   const [, setLocation] = useLocation();
   const [assets, setAssets] = useState<DisplayAsset[]>(toDisplay());
+  const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
 
   useEffect(() => {
     listMedia().then((api) => {
@@ -95,8 +106,10 @@ export default function MediaLibrary() {
     });
   };
 
-  const handleDelete = (id: string) => {
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    setAssets((prev) => prev.filter((a) => a.id !== pendingDelete.id));
+    setPendingDelete(null);
   };
 
   const filters = [
@@ -233,7 +246,7 @@ export default function MediaLibrary() {
                   <Button variant="outline" size="sm" className="w-full" onClick={() => handleDuplicate(asset.id)} data-testid={`btn-duplicate-${asset.id}`}>
                     Duplicate
                   </Button>
-                  <Button variant="destructive" size="sm" className="px-3" onClick={() => handleDelete(asset.id)} data-testid={`btn-delete-${asset.id}`}>
+                  <Button variant="destructive" size="sm" className="px-3" onClick={() => setPendingDelete(asset)} data-testid={`btn-delete-${asset.id}`}>
                     Delete
                   </Button>
                 </div>
@@ -242,6 +255,29 @@ export default function MediaLibrary() {
           );
         })}
       </div>
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent data-testid="dialog-delete-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? `"${pendingDelete.originalFileName}" will be permanently removed from your media library. This action cannot be undone.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="btn-delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="btn-delete-confirm"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
