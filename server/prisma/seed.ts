@@ -135,35 +135,37 @@ async function main(): Promise<void> {
     },
   });
 
-  // Account 6: Facebook Business (secondary)
-  const fbAccount2 = await prisma.socialAccount.create({
+  // Account 6: n8n workflow automation webhook
+  await prisma.socialAccount.create({
     data: {
-      id: "acc_fb2",
-      platform: "FACEBOOK",
-      accountName: "Marine Decking Co — Trade",
-      accountId: "fb_page_654321",
-      connectionStatus: "disconnected",
-      postingCapability: false,
+      id: "acc_n8n",
+      platform: "N8N",
+      accountName: "n8n Workflow Automation",
+      accountId: "n8n_webhook_primary",
+      connectionStatus: "connected",
+      lastSync: hoursAgo(1),
+      postingCapability: true,
       commentReadCapability: false,
       commentReplyCapability: false,
       moderationCapability: false,
-      scopes: [],
+      scopes: ["webhook:trigger"],
     },
   });
 
-  // Account 7: Instagram secondary
-  const igAccount2 = await prisma.socialAccount.create({
+  // Account 7: Local AI (Ollama) integration
+  await prisma.socialAccount.create({
     data: {
-      id: "acc_ig2",
-      platform: "INSTAGRAM",
-      accountName: "Seasole By Marine Decking (@seasole_official)",
-      accountId: "ig_user_210987",
-      connectionStatus: "not_connected",
+      id: "acc_localai",
+      platform: "LOCAL_AI",
+      accountName: "Local AI (Ollama — llama3-70b)",
+      accountId: "localai_ollama_primary",
+      connectionStatus: "connected",
+      lastSync: hoursAgo(0.5),
       postingCapability: false,
       commentReadCapability: false,
       commentReplyCapability: false,
       moderationCapability: false,
-      scopes: [],
+      scopes: ["inference:generate"],
     },
   });
 

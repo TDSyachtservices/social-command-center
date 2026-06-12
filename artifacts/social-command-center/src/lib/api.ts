@@ -2,21 +2,16 @@
  * API client for the Social Command Center backend.
  *
  * All functions attempt to fetch from VITE_API_BASE_URL first.
- * If the backend is unreachable (network error or non-2xx) they fall back
- * to the local mock-data files so the frontend stays functional in
- * development without a running backend.
+ * On success they return typed data.
+ * On failure (network error, non-2xx, or VITE_API_BASE_URL not set) they
+ * return null — callers are responsible for falling back to mock data.
  */
-
-import { mockPosts } from "@/data/mockPosts";
-import { mockComments } from "@/data/mockComments";
-import { mockAccounts } from "@/data/mockAccounts";
-import { mockPublishLogs, mockCommentLogs } from "@/data/mockLogs";
-import { mockSettings } from "@/data/mockSettings";
-import { mockMediaAssets } from "@/data/mockMedia";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
-type ApiResponse<T> = { success: true; data: T; meta?: Record<string, unknown> } | { success: false; error: { code: string; message: string } };
+type ApiResponse<T> =
+  | { success: true; data: T; meta?: Record<string, unknown> }
+  | { success: false; error: { code: string; message: string } };
 
 async function apiFetch<T>(
   path: string,
@@ -65,7 +60,7 @@ export async function listPosts(params?: {
   q?: string;
   page?: number;
   limit?: number;
-}): Promise<ApiPost[]> {
+}): Promise<ApiPost[] | null> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.platform) qs.set("platform", params.platform);
@@ -74,33 +69,12 @@ export async function listPosts(params?: {
   if (params?.limit) qs.set("limit", String(params.limit));
 
   const result = await apiFetch<ApiPost[]>(`/api/posts?${qs}`);
-  if (result.ok) return result.data;
-
-  // Fallback: map frontend mock data
-  return mockPosts
-    .filter((p) => !params?.status || params.status === "all" || p.status === params.status)
-    .map((p) => ({
-      id: p.id,
-      title: p.title,
-      masterCaption: p.masterCaption ?? "",
-      status: p.status.toUpperCase(),
-      scheduledAt: p.scheduledAt ?? null,
-      publishedAt: null,
-      mediaUrl: p.mediaUrl ?? null,
-      mediaType: p.mediaType ?? null,
-      platforms: p.platforms.map((pl) => ({ platform: pl.toUpperCase(), status: p.status.toUpperCase(), accountId: "" })),
-      createdAt: p.createdAt ?? new Date().toISOString(),
-      updatedAt: p.updatedAt ?? new Date().toISOString(),
-    }));
+  return result.ok ? result.data : null;
 }
 
 export async function getPost(id: string): Promise<ApiPost | null> {
   const result = await apiFetch<ApiPost>(`/api/posts/${id}`);
-  if (result.ok) return result.data;
-  const found = mockPosts.find((p) => p.id === id);
-  return found
-    ? { id: found.id, title: found.title, masterCaption: found.masterCaption ?? "", status: found.status.toUpperCase(), scheduledAt: found.scheduledAt ?? null, publishedAt: null, mediaUrl: found.mediaUrl ?? null, mediaType: found.mediaType ?? null, platforms: found.platforms.map((pl) => ({ platform: pl.toUpperCase(), status: found.status.toUpperCase(), accountId: "" })), createdAt: found.createdAt ?? new Date().toISOString(), updatedAt: found.updatedAt ?? new Date().toISOString() }
-    : null;
+  return result.ok ? result.data : null;
 }
 
 export async function createPost(body: {
@@ -120,7 +94,10 @@ export async function createPost(body: {
   return result.ok ? result.data : null;
 }
 
-export async function updatePost(id: string, body: Partial<Parameters<typeof createPost>[0]>): Promise<ApiPost | null> {
+export async function updatePost(
+  id: string,
+  body: Partial<Parameters<typeof createPost>[0]>,
+): Promise<ApiPost | null> {
   const result = await apiFetch<ApiPost>(`/api/posts/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -135,6 +112,19 @@ export async function deletePost(id: string): Promise<boolean> {
 
 export async function retryPost(id: string): Promise<boolean> {
   const result = await apiFetch<unknown>(`/api/posts/${id}/retry`, { method: "POST" });
+  return result.ok;
+}
+
+export async function schedulePost(postId: string, scheduledAt: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/posts/${postId}/schedule`, {
+    method: "POST",
+    body: JSON.stringify({ scheduledAt }),
+  });
+  return result.ok;
+}
+
+export async function publishPost(postId: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/posts/${postId}/publish`, { method: "POST" });
   return result.ok;
 }
 
@@ -155,29 +145,51 @@ export interface ApiAccount {
   tokenExpiresAt: string | null;
 }
 
-export async function listAccounts(): Promise<ApiAccount[]> {
+export async function listAccounts(): Promise<ApiAccount[] | null> {
   const result = await apiFetch<ApiAccount[]>("/api/accounts");
-  if (result.ok) return result.data;
+  return result.ok ? result.data : null;
+}
 
-  return mockAccounts.map((a) => ({
-    id: a.id,
-    platform: a.platform.toUpperCase(),
-    accountName: a.accountName,
-    accountId: a.accountId,
-    connectionStatus: a.connectionStatus,
-    lastSync: a.lastSync ?? null,
-    postingCapability: a.postingCapability,
-    commentReadCapability: a.commentReadCapability,
-    commentReplyCapability: a.commentReplyCapability,
-    moderationCapability: a.moderationCapability,
-    scopes: [],
-    tokenExpiresAt: null,
-  }));
+export async function getAccount(id: string): Promise<ApiAccount | null> {
+  const result = await apiFetch<ApiAccount>(`/api/accounts/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function connectAccountMock(body: {
+  platform: string;
+  accountName: string;
+  accountId: string;
+}): Promise<ApiAccount | null> {
+  const result = await apiFetch<ApiAccount>("/api/accounts/connect-mock", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
 }
 
 export async function disconnectAccount(id: string): Promise<boolean> {
   const result = await apiFetch<unknown>(`/api/accounts/${id}/disconnect`, { method: "POST" });
   return result.ok;
+}
+
+export async function checkAccount(id: string): Promise<{ status: string; expiresAt?: string } | null> {
+  const result = await apiFetch<{ status: string; expiresAt?: string }>(`/api/accounts/${id}/check`);
+  return result.ok ? result.data : null;
+}
+
+export async function getAccountCapabilities(id: string): Promise<{
+  posting: boolean;
+  commentRead: boolean;
+  commentReply: boolean;
+  moderation: boolean;
+} | null> {
+  const result = await apiFetch<{
+    posting: boolean;
+    commentRead: boolean;
+    commentReply: boolean;
+    moderation: boolean;
+  }>(`/api/accounts/${id}/capabilities`);
+  return result.ok ? result.data : null;
 }
 
 // ─── Scheduler ────────────────────────────────────────────────────────────────
@@ -190,14 +202,6 @@ export async function publishNow(postId: string): Promise<boolean> {
   return result.ok;
 }
 
-export async function schedulePost(postId: string, scheduledAt: string): Promise<boolean> {
-  const result = await apiFetch<unknown>("/api/scheduler/schedule", {
-    method: "POST",
-    body: JSON.stringify({ postId, scheduledAt }),
-  });
-  return result.ok;
-}
-
 export async function cancelSchedule(postId: string): Promise<boolean> {
   const result = await apiFetch<unknown>("/api/scheduler/cancel", {
     method: "POST",
@@ -206,14 +210,9 @@ export async function cancelSchedule(postId: string): Promise<boolean> {
   return result.ok;
 }
 
-export async function getSchedulerQueue(): Promise<ApiPost[]> {
+export async function getSchedulerQueue(): Promise<ApiPost[] | null> {
   const result = await apiFetch<ApiPost[]>("/api/scheduler/queue");
-  if (result.ok) return result.data;
-  return mockPosts.filter((p) => p.status === "scheduled").map((p) => ({
-    id: p.id, title: p.title, masterCaption: "", status: "SCHEDULED",
-    scheduledAt: p.scheduledAt ?? null, publishedAt: null, mediaUrl: null, mediaType: null,
-    platforms: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  }));
+  return result.ok ? result.data : null;
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
@@ -242,7 +241,7 @@ export async function listComments(params?: {
   q?: string;
   page?: number;
   limit?: number;
-}): Promise<ApiComment[]> {
+}): Promise<ApiComment[] | null> {
   const qs = new URLSearchParams();
   if (params?.status && params.status !== "all") qs.set("status", params.status.toUpperCase());
   if (params?.platform) qs.set("platform", params.platform.toUpperCase());
@@ -252,32 +251,34 @@ export async function listComments(params?: {
   if (params?.limit) qs.set("limit", String(params.limit));
 
   const result = await apiFetch<ApiComment[]>(`/api/inbox?${qs}`);
-  if (result.ok) return result.data;
-
-  return mockComments
-    .filter((c) => !params?.status || params.status === "all" || c.status === params.status)
-    .map((c) => ({
-      id: c.id,
-      platform: c.platform.toUpperCase(),
-      accountName: c.accountName ?? "",
-      commenterName: c.commenterName,
-      commenterHandle: c.commenterHandle ?? null,
-      commentText: c.commentText,
-      originalPostTitle: c.originalPostTitle ?? null,
-      status: c.status.toUpperCase(),
-      priority: (c.priority ?? "NORMAL").toUpperCase(),
-      replyCount: c.replyCount ?? 0,
-      assignedUser: c.assignedUser ?? null,
-      timestamp: c.timestamp,
-      replies: [],
-      notes: [],
-    }));
+  return result.ok ? result.data : null;
 }
 
-export async function updateComment(id: string, body: { status?: string; priority?: string; assignedUser?: string | null }): Promise<boolean> {
+export async function getComment(id: string): Promise<ApiComment | null> {
+  const result = await apiFetch<ApiComment>(`/api/inbox/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function updateComment(
+  id: string,
+  body: { status?: string; priority?: string; assignedUser?: string | null },
+): Promise<boolean> {
   const result = await apiFetch<unknown>(`/api/inbox/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+  return result.ok;
+}
+
+export async function hideComment(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${id}/hide`, { method: "PATCH" });
+  return result.ok;
+}
+
+export async function assignComment(id: string, assignedUser: string | null): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${id}/assign`, {
+    method: "PATCH",
+    body: JSON.stringify({ assignedUser }),
   });
   return result.ok;
 }
@@ -298,33 +299,76 @@ export async function addNote(commentId: string, noteText: string): Promise<bool
   return result.ok;
 }
 
-// ─── Logs ─────────────────────────────────────────────────────────────────────
-
-export async function listPublishLogs(params?: { status?: string; platform?: string; page?: number }): Promise<typeof mockPublishLogs> {
-  const qs = new URLSearchParams();
-  if (params?.status) qs.set("status", params.status);
-  if (params?.platform) qs.set("platform", params.platform);
-  if (params?.page) qs.set("page", String(params.page));
-
-  const result = await apiFetch<typeof mockPublishLogs>(`/api/logs/publish?${qs}`);
-  return result.ok ? result.data : mockPublishLogs;
+export async function triggerSyncMock(): Promise<{ synced: number } | null> {
+  const result = await apiFetch<{ synced: number }>("/api/inbox/sync-mock", { method: "POST" });
+  return result.ok ? result.data : null;
 }
 
-export async function listCommentLogs(params?: { status?: string; platform?: string; page?: number }): Promise<typeof mockCommentLogs> {
+export async function getInboxSyncLogs(): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>("/api/inbox/sync-logs");
+  return result.ok ? result.data : null;
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+export interface ApiPublishLog {
+  id: string;
+  postTitle: string;
+  platform: string;
+  action: string;
+  status: string;
+  timestamp: string;
+  errorMessage: string | null;
+  externalPostId: string | null;
+}
+
+export async function listPublishLogs(params?: {
+  status?: string;
+  platform?: string;
+  page?: number;
+}): Promise<ApiPublishLog[] | null> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.platform) qs.set("platform", params.platform);
   if (params?.page) qs.set("page", String(params.page));
 
-  const result = await apiFetch<typeof mockCommentLogs>(`/api/logs/comment?${qs}`);
-  return result.ok ? result.data : mockCommentLogs;
+  const result = await apiFetch<ApiPublishLog[]>(`/api/logs/publish?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function listCommentLogs(params?: {
+  status?: string;
+  platform?: string;
+  page?: number;
+}): Promise<unknown[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<unknown[]>(`/api/logs/comment?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function listAuditLogs(params?: {
+  page?: number;
+}): Promise<unknown[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<unknown[]>(`/api/logs/audit?${qs}`);
+  return result.ok ? result.data : null;
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-export async function getSettings(): Promise<typeof mockSettings> {
-  const result = await apiFetch<typeof mockSettings>("/api/settings");
-  return result.ok ? result.data : mockSettings;
+export interface ApiSettings {
+  [key: string]: unknown;
+}
+
+export async function getSettings(): Promise<ApiSettings | null> {
+  const result = await apiFetch<ApiSettings>("/api/settings");
+  return result.ok ? result.data : null;
 }
 
 export async function updateSettings(key: string, value: unknown): Promise<boolean> {
@@ -337,13 +381,39 @@ export async function updateSettings(key: string, value: unknown): Promise<boole
 
 // ─── Media ────────────────────────────────────────────────────────────────────
 
-export async function listMedia(params?: { type?: string; page?: number }): Promise<typeof mockMediaAssets> {
+export interface ApiMediaAsset {
+  id: string;
+  originalFileName: string;
+  originalFileType: string;
+  originalMimeType: string;
+  originalSizeBytes: number;
+  originalWidth: number | null;
+  originalHeight: number | null;
+  processingStatus: string;
+  validationStatus: string;
+  createdAt: string;
+}
+
+export async function listMedia(params?: {
+  type?: string;
+  page?: number;
+}): Promise<ApiMediaAsset[] | null> {
   const qs = new URLSearchParams();
   if (params?.type) qs.set("type", params.type);
   if (params?.page) qs.set("page", String(params.page));
 
-  const result = await apiFetch<typeof mockMediaAssets>(`/api/media?${qs}`);
-  return result.ok ? result.data : mockMediaAssets;
+  const result = await apiFetch<ApiMediaAsset[]>(`/api/media?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getMediaAsset(id: string): Promise<ApiMediaAsset | null> {
+  const result = await apiFetch<ApiMediaAsset>(`/api/media/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getMediaVersions(id: string): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>(`/api/media/${id}/versions`);
+  return result.ok ? result.data : null;
 }
 
 export async function processMedia(assetId: string): Promise<boolean> {
@@ -366,8 +436,84 @@ export async function generateCaption(body: {
   return result.ok ? result.data : null;
 }
 
-export async function getAiStatus(): Promise<{ connected: boolean; endpoint?: string; models?: unknown[] } | null> {
-  const result = await apiFetch<{ connected: boolean; endpoint?: string; models?: unknown[] }>("/api/ai/status");
+export async function generateReply(body: {
+  commentText: string;
+  commenterName: string;
+  platform: string;
+  tone?: string;
+}): Promise<{ reply: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ reply: string; mock?: boolean }>("/api/ai/generate-reply", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function analyzeComment(body: {
+  commentText: string;
+  platform: string;
+}): Promise<{
+  sentiment: string;
+  priority: string;
+  category: string;
+  suggestedAction: string;
+  mock?: boolean;
+} | null> {
+  const result = await apiFetch<{
+    sentiment: string;
+    priority: string;
+    category: string;
+    suggestedAction: string;
+    mock?: boolean;
+  }>("/api/ai/analyze-comment", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function createWebsiteDraft(body: {
+  postTitle: string;
+  caption: string;
+  tone?: string;
+}): Promise<{ draft: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ draft: string; mock?: boolean }>("/api/ai/create-website-draft", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function getAiStatus(): Promise<{
+  connected: boolean;
+  endpoint?: string;
+  models?: unknown[];
+} | null> {
+  const result = await apiFetch<{ connected: boolean; endpoint?: string; models?: unknown[] }>(
+    "/api/ai/status",
+  );
+  return result.ok ? result.data : null;
+}
+
+// ─── Website ──────────────────────────────────────────────────────────────────
+
+export async function getWebsiteStatus(): Promise<{ connected: boolean; endpoint?: string } | null> {
+  const result = await apiFetch<{ connected: boolean; endpoint?: string }>("/api/website/status");
+  return result.ok ? result.data : null;
+}
+
+export async function listWebsiteDrafts(): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>("/api/website/drafts");
+  return result.ok ? result.data : null;
+}
+
+export async function publishWebsiteDraft(draftId: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/website/publish/${draftId}`, { method: "POST" });
+  return result.ok;
+}
+
+export async function getWebsiteSyncLogs(): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>("/api/website/sync-logs");
   return result.ok ? result.data : null;
 }
 

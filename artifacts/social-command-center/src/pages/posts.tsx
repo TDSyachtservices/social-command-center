@@ -39,14 +39,15 @@ export default function Posts() {
 
   useEffect(() => {
     listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
-      const normalized: DisplayPost[] = apiPosts.map((p) => ({
-        id: p.id,
-        title: p.title,
-        platforms: p.platforms.map((pl) => pl.platform.toLowerCase()),
-        status: p.status.toLowerCase(),
-        scheduledAt: p.scheduledAt ?? null,
-      }));
-      if (normalized.length > 0) setPosts(normalized);
+      if (apiPosts !== null && apiPosts.length > 0) {
+        setPosts(apiPosts.map((p) => ({
+          id: p.id,
+          title: p.title,
+          platforms: p.platforms.map((pl) => pl.platform.toLowerCase()),
+          status: p.status.toLowerCase(),
+          scheduledAt: p.scheduledAt ?? null,
+        })));
+      }
     });
   }, [filter]);
 

@@ -20,7 +20,7 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
 
   useEffect(() => {
     listComments({ limit: 100 }).then((apiComments) => {
-      if (apiComments.length > 0) {
+      if (apiComments !== null && apiComments.length > 0) {
         const normalized: MockComment[] = apiComments.map((c) => ({
           id: c.id,
           platform: c.platform.toLowerCase() as MockComment["platform"],

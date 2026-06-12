@@ -1,0 +1,3 @@
+-- AddValue
+ALTER TYPE "Platform" ADD VALUE 'N8N';
+ALTER TYPE "Platform" ADD VALUE 'LOCAL_AI';

@@ -22,9 +22,7 @@ router.get(
   "/",
   validateQuery(listQuerySchema),
   async (req: Request, res: Response) => {
-    const q = (
-      req as Request & { validatedQuery: z.infer<typeof listQuerySchema> }
-    ).validatedQuery;
+    const q = (req as Request & { validatedQuery: z.infer<typeof listQuerySchema> }).validatedQuery;
 
     const where = {
       ...(q.status ? { status: q.status as never } : {}),
@@ -58,6 +56,38 @@ router.get(
     sendSuccess(res, comments, { total, page: q.page, limit: q.limit });
   },
 );
+
+// ─── Sync logs ────────────────────────────────────────────────────────────────
+// NOTE: declared BEFORE /:id routes to avoid parameter capture
+router.get("/sync-logs", async (_req: Request, res: Response) => {
+  const logs = await prisma.socialInboxSyncLog.findMany({
+    orderBy: { timestamp: "desc" },
+    take: 100,
+  });
+  sendSuccess(res, logs);
+});
+
+// ─── Trigger mock sync ────────────────────────────────────────────────────────
+router.post("/sync-mock", async (_req: Request, res: Response) => {
+  const accounts = await prisma.socialAccount.findMany({
+    where: { connectionStatus: "connected" },
+  });
+
+  const logs = await Promise.all(
+    accounts.map((acc) =>
+      prisma.socialInboxSyncLog.create({
+        data: {
+          platform: acc.platform,
+          accountId: acc.id,
+          actionType: "comment_sync",
+          status: "success",
+        },
+      }),
+    ),
+  );
+
+  sendSuccess(res, { synced: logs.length, logs });
+});
 
 // ─── Get single comment ───────────────────────────────────────────────────────
 router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
@@ -103,6 +133,68 @@ router.patch(
       },
       include: { replies: true, notes: true },
     });
+    sendSuccess(res, comment);
+  },
+);
+
+// ─── Hide comment ─────────────────────────────────────────────────────────────
+router.patch("/:id/hide", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const existing = await prisma.socialComment.findUnique({ where: { id } });
+  if (!existing) throw notFound("Comment", id);
+
+  const [comment] = await prisma.$transaction([
+    prisma.socialComment.update({
+      where: { id },
+      data: { status: "HIDDEN" },
+      include: { replies: true, notes: true },
+    }),
+    prisma.socialInboxSyncLog.create({
+      data: {
+        platform: existing.platform,
+        accountId: existing.accountId ?? undefined,
+        actionType: "comment_hidden",
+        status: "success",
+        relatedCommenter: existing.commenterHandle ?? existing.commenterName,
+      },
+    }),
+  ]);
+
+  sendSuccess(res, comment);
+});
+
+// ─── Assign comment ───────────────────────────────────────────────────────────
+const assignSchema = z.object({
+  assignedUser: z.string().nullable(),
+});
+
+router.patch(
+  "/:id/assign",
+  validateBody(assignSchema),
+  async (req: Request<{ id: string }>, res: Response) => {
+    const { id } = req.params;
+    const existing = await prisma.socialComment.findUnique({ where: { id } });
+    if (!existing) throw notFound("Comment", id);
+
+    const body = req.body as z.infer<typeof assignSchema>;
+
+    const [comment] = await prisma.$transaction([
+      prisma.socialComment.update({
+        where: { id },
+        data: { assignedUser: body.assignedUser },
+        include: { replies: true, notes: true },
+      }),
+      prisma.socialInboxSyncLog.create({
+        data: {
+          platform: existing.platform,
+          accountId: existing.accountId ?? undefined,
+          actionType: "assignment_updated",
+          status: "success",
+          relatedCommenter: existing.commenterHandle ?? existing.commenterName,
+        },
+      }),
+    ]);
+
     sendSuccess(res, comment);
   },
 );
@@ -177,14 +269,5 @@ router.post(
     sendSuccess(res, note, undefined, 201);
   },
 );
-
-// ─── Sync logs ────────────────────────────────────────────────────────────────
-router.get("/sync-logs", async (_req: Request, res: Response) => {
-  const logs = await prisma.socialInboxSyncLog.findMany({
-    orderBy: { timestamp: "desc" },
-    take: 100,
-  });
-  sendSuccess(res, logs);
-});
 
 export default router;
