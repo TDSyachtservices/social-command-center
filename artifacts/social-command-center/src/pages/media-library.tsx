@@ -72,6 +72,33 @@ export default function MediaLibrary() {
     }
   };
 
+  const handleDuplicate = (id: string) => {
+    setAssets((prev) => {
+      const index = prev.findIndex((a) => a.id === id);
+      if (index === -1) return prev;
+      const original = prev[index];
+      const dotIndex = original.originalFileName.lastIndexOf(".");
+      const name =
+        dotIndex > 0
+          ? `${original.originalFileName.slice(0, dotIndex)} (copy)${original.originalFileName.slice(dotIndex)}`
+          : `${original.originalFileName} (copy)`;
+      const copy: DisplayAsset = {
+        ...original,
+        id: `${original.id}-copy-${Date.now()}`,
+        originalFileName: name,
+        uploadedAt: new Date().toISOString(),
+        generatedVersions: original.generatedVersions.map((v) => ({ ...v })),
+      };
+      const next = [...prev];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    setAssets((prev) => prev.filter((a) => a.id !== id));
+  };
+
   const filters = [
     "All", "Images", "Videos", "Needs Review", "Failed",
     "Ready for Facebook", "Ready for Instagram", "Ready for LinkedIn", "Ready for TikTok", "Ready for Website"
@@ -203,10 +230,10 @@ export default function MediaLibrary() {
                   <Button variant="default" size="sm" className="w-full" asChild data-testid={`btn-optimize-${asset.id}`}>
                     <Link href={`/media-optimizer/${asset.id}`}>Optimize</Link>
                   </Button>
-                  <Button variant="outline" size="sm" className="w-full" data-testid={`btn-duplicate-${asset.id}`}>
+                  <Button variant="outline" size="sm" className="w-full" onClick={() => handleDuplicate(asset.id)} data-testid={`btn-duplicate-${asset.id}`}>
                     Duplicate
                   </Button>
-                  <Button variant="destructive" size="sm" className="px-3" data-testid={`btn-delete-${asset.id}`}>
+                  <Button variant="destructive" size="sm" className="px-3" onClick={() => handleDelete(asset.id)} data-testid={`btn-delete-${asset.id}`}>
                     Delete
                   </Button>
                 </div>
