@@ -282,6 +282,6 @@ export const summaryStats = {
   totalFollowers: 28480,
   followerGrowth30d: 1710,
   followerGrowthPct30d: 6.4,
-  postsPublished30d: 4,
+  postsPublished30d: 15,
   totalEngagements30d: 4110,
 };

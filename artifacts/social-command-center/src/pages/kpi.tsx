@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearch, useLocation } from "wouter";
+import { useSearch, useLocation, Link } from "wouter";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp, TrendingDown, Users, Eye, Heart, Share2,
-  MessageSquare, Download, FileText, BarChart2, ChevronUp,
+  MessageSquare, Download, FileText, BarChart2, ChevronUp, ChevronRight,
 } from "lucide-react";
 import {
   PLATFORM_CONFIG, weeklyReach, weeklyImpressions, weeklyFollowers,
@@ -24,7 +24,7 @@ const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 const fmtFull = (n: number) => n.toLocaleString();
 
 function MetricCard({
-  label, value, sub, trend, trendUp, icon: Icon, cardClass, iconBg, iconText, numClass,
+  label, value, sub, trend, trendUp, icon: Icon, cardClass, iconBg, iconText, numClass, to,
 }: {
   label: string;
   value: string;
@@ -36,9 +36,10 @@ function MetricCard({
   iconBg?: string;
   iconText?: string;
   numClass?: string;
+  to?: string;
 }) {
-  return (
-    <Card className={cardClass ?? ""}>
+  const card = (
+    <Card className={`${cardClass ?? ""} ${to ? "group cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 h-full" : ""}`}>
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -50,15 +51,29 @@ function MetricCard({
             <Icon className={`h-4 w-4 ${iconText ?? "text-primary"}`} />
           </div>
         </div>
-        {trend && (
-          <div className={`flex items-center gap-1 mt-3 text-xs font-medium ${trendUp ? "text-emerald-600" : "text-red-600"}`}>
-            {trendUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {trend} vs prior period
-          </div>
-        )}
+        <div className="flex items-center justify-between mt-3">
+          {trend ? (
+            <div className={`flex items-center gap-1 text-xs font-medium ${trendUp ? "text-emerald-600" : "text-red-600"}`}>
+              {trendUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {trend} vs prior period
+            </div>
+          ) : <span />}
+          {to && (
+            <span className={`flex items-center gap-0.5 text-xs font-medium ${numClass ?? "text-primary"} opacity-70 group-hover:opacity-100 transition-opacity`}>
+              Details
+              <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
+
+  return to ? (
+    <Link href={to} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+      {card}
+    </Link>
+  ) : card;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -89,23 +104,23 @@ function OverviewTab() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MetricCard label="Total Reach (30d)" value={fmt(summaryStats.totalReach30d)} sub={`${fmtFull(summaryStats.totalReach30d)} unique accounts`} trend="+18.4%" trendUp icon={Eye}
+        <MetricCard to="/kpi/metric/reach" label="Total Reach (30d)" value={fmt(summaryStats.totalReach30d)} sub={`${fmtFull(summaryStats.totalReach30d)} unique accounts`} trend="+18.4%" trendUp icon={Eye}
           cardClass="bg-violet-50 border-violet-200" iconBg="bg-violet-200" iconText="text-violet-600" numClass="text-violet-700" />
-        <MetricCard label="Total Impressions (30d)" value={fmt(summaryStats.totalImpressions30d)} sub="Across all platforms" trend="+22.1%" trendUp icon={BarChart2}
+        <MetricCard to="/kpi/metric/impressions" label="Total Impressions (30d)" value={fmt(summaryStats.totalImpressions30d)} sub="Across all platforms" trend="+22.1%" trendUp icon={BarChart2}
           cardClass="bg-sky-50 border-sky-200" iconBg="bg-sky-200" iconText="text-sky-600" numClass="text-sky-700" />
-        <MetricCard label="Avg Engagement Rate" value={`${summaryStats.avgEngagementRate}%`} sub="Likes + comments + shares" trend="+0.8pp" trendUp icon={Heart}
+        <MetricCard to="/kpi/metric/engagement-rate" label="Avg Engagement Rate" value={`${summaryStats.avgEngagementRate}%`} sub="Likes + comments + shares" trend="+0.8pp" trendUp icon={Heart}
           cardClass="bg-rose-50 border-rose-200" iconBg="bg-rose-200" iconText="text-rose-600" numClass="text-rose-700" />
-        <MetricCard label="Total Engagements" value={fmt(summaryStats.totalEngagements30d)} sub="Interactions this month" trend="+31%" trendUp icon={Share2}
+        <MetricCard to="/kpi/metric/engagements" label="Total Engagements" value={fmt(summaryStats.totalEngagements30d)} sub="Interactions this month" trend="+31%" trendUp icon={Share2}
           cardClass="bg-orange-50 border-orange-200" iconBg="bg-orange-200" iconText="text-orange-600" numClass="text-orange-700" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MetricCard label="Total Followers" value={fmtFull(summaryStats.totalFollowers)} sub="Across all platforms" icon={Users}
+        <MetricCard to="/kpi/metric/followers" label="Total Followers" value={fmtFull(summaryStats.totalFollowers)} sub="Across all platforms" icon={Users}
           cardClass="bg-indigo-50 border-indigo-200" iconBg="bg-indigo-200" iconText="text-indigo-600" numClass="text-indigo-700" />
-        <MetricCard label="Follower Growth (30d)" value={`+${fmtFull(summaryStats.followerGrowth30d)}`} sub={`+${summaryStats.followerGrowthPct30d}% growth rate`} trend="+6.4%" trendUp icon={ChevronUp}
+        <MetricCard to="/kpi/metric/follower-growth" label="Follower Growth (30d)" value={`+${fmtFull(summaryStats.followerGrowth30d)}`} sub={`+${summaryStats.followerGrowthPct30d}% growth rate`} trend="+6.4%" trendUp icon={ChevronUp}
           cardClass="bg-emerald-50 border-emerald-200" iconBg="bg-emerald-200" iconText="text-emerald-600" numClass="text-emerald-700" />
-        <MetricCard label="Posts Published (30d)" value={String(summaryStats.postsPublished30d)} sub="Content pieces live" icon={FileText}
+        <MetricCard to="/kpi/metric/posts-published" label="Posts Published (30d)" value={String(summaryStats.postsPublished30d)} sub="Content pieces live" icon={FileText}
           cardClass="bg-amber-50 border-amber-200" iconBg="bg-amber-200" iconText="text-amber-600" numClass="text-amber-700" />
-        <MetricCard label="Avg Reach / Post" value={fmt(Math.round(summaryStats.totalReach30d / summaryStats.postsPublished30d))} sub="Reach efficiency" trend="+12%" trendUp icon={TrendingUp}
+        <MetricCard to="/kpi/metric/avg-reach-per-post" label="Avg Reach / Post" value={fmt(Math.round(summaryStats.totalReach30d / summaryStats.postsPublished30d))} sub="Reach efficiency" trend="+12%" trendUp icon={TrendingUp}
           cardClass="bg-teal-50 border-teal-200" iconBg="bg-teal-200" iconText="text-teal-600" numClass="text-teal-700" />
       </div>
 

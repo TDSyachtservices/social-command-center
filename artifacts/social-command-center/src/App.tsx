@@ -19,6 +19,7 @@ import Settings from "@/pages/settings";
 import MediaLibrary from "@/pages/media-library";
 import MediaOptimizer from "@/pages/media-optimizer";
 import KPI from "@/pages/kpi";
+import KpiMetric from "@/pages/kpi-metric";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ function Router() {
         <Route path="/ai-assistant" component={AIAssistant} />
         <Route path="/website-api" component={WebsiteApi} />
         <Route path="/settings" component={Settings} />
+        <Route path="/kpi/metric/:metricId" component={KpiMetric} />
         <Route path="/kpi" component={KPI} />
         <Route component={NotFound} />
       </Switch>
