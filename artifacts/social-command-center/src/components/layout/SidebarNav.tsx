@@ -83,7 +83,7 @@ export function SidebarNavContent({ onNavigate }: SidebarNavContentProps) {
           <div key={si} className={si > 0 ? "pt-3" : ""}>
             {section.label && (
               <div className="px-3 pb-1 pt-1">
-                <span className="text-[10px] uppercase tracking-widest font-semibold text-sidebar-foreground/40 select-none">
+                <span className="text-[10px] uppercase tracking-widest font-semibold text-sidebar-foreground/50 select-none">
                   {section.label}
                 </span>
               </div>

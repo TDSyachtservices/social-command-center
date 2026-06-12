@@ -20,6 +20,17 @@ type DashComment = { id: string; platform: string; commenterName: string; commen
 type DashAccount = { id: string; accountName: string; connectionStatus: string };
 type DashLog = { id: string; postTitle: string; action: string; status: string; timestamp: string };
 
+const cardStyles = [
+  { card: "bg-violet-50 border-violet-200 hover:bg-violet-100/80",  num: "text-violet-700",  arrow: "text-violet-300 group-hover:text-violet-500" },
+  { card: "bg-sky-50 border-sky-200 hover:bg-sky-100/80",           num: "text-sky-700",     arrow: "text-sky-300 group-hover:text-sky-500" },
+  { card: "bg-emerald-50 border-emerald-200 hover:bg-emerald-100/80",num: "text-emerald-700", arrow: "text-emerald-300 group-hover:text-emerald-500" },
+  { card: "bg-rose-50 border-rose-200 hover:bg-rose-100/80",        num: "text-rose-700",    arrow: "text-rose-300 group-hover:text-rose-500" },
+  { card: "bg-indigo-50 border-indigo-200 hover:bg-indigo-100/80",  num: "text-indigo-700",  arrow: "text-indigo-300 group-hover:text-indigo-500" },
+  { card: "bg-orange-50 border-orange-200 hover:bg-orange-100/80",  num: "text-orange-700",  arrow: "text-orange-300 group-hover:text-orange-500" },
+  { card: "bg-amber-50 border-amber-200 hover:bg-amber-100/80",     num: "text-amber-700",   arrow: "text-amber-300 group-hover:text-amber-500" },
+  { card: "bg-teal-50 border-teal-200 hover:bg-teal-100/80",        num: "text-teal-700",    arrow: "text-teal-300 group-hover:text-teal-500" },
+];
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
 
@@ -94,21 +105,24 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Link key={stat.label} href={stat.href} data-testid={`stat-card-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
-            <Card className="cursor-pointer hover:shadow-md hover:border-primary/40 transition-all group">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
-                <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
-              </CardHeader>
-              <CardContent className="pb-4">
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground mt-0.5">{stat.description}</p>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat, i) => {
+          const style = cardStyles[i] ?? cardStyles[0];
+          return (
+            <Link key={stat.label} href={stat.href} data-testid={`stat-card-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
+              <Card className={`cursor-pointer transition-all group border ${style.card} shadow-sm hover:shadow-md`}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
+                  <CardTitle className="text-sm font-semibold text-foreground/70">{stat.label}</CardTitle>
+                  <ArrowRight className={`h-3.5 w-3.5 transition-all group-hover:translate-x-0.5 ${style.arrow}`} />
+                </CardHeader>
+                <CardContent className="pb-4">
+                  <div className={`text-3xl font-bold ${style.num}`}>{stat.value}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{stat.description}</p>
+                </CardContent>
+              </Card>
+            </Link>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -173,8 +187,8 @@ export default function Dashboard() {
                   <span className="text-muted-foreground text-xs">{new Date(log.timestamp).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">{log.action.replace('_', ' ')}</span>
-                  <span className={log.status === "success" ? "text-green-600" : "text-destructive"}>{log.status}</span>
+                  <span className="text-muted-foreground">{log.action.replace("_", " ")}</span>
+                  <span className={log.status === "success" ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"}>{log.status}</span>
                 </div>
               </div>
             ))}
@@ -189,8 +203,8 @@ export default function Dashboard() {
             {accounts.map(account => (
               <div key={account.id} className="flex justify-between items-center text-sm border-b pb-2 last:border-0 last:pb-0">
                 <span>{account.accountName}</span>
-                <span className={account.connectionStatus === "connected" ? "text-green-600" : "text-amber-600"}>
-                  {account.connectionStatus.replace('_', ' ')}
+                <span className={account.connectionStatus === "connected" ? "text-emerald-600 font-medium" : "text-amber-600 font-medium"}>
+                  {account.connectionStatus.replace("_", " ")}
                 </span>
               </div>
             ))}
@@ -203,9 +217,9 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             {posts.filter(p => p.status === "failed").map(post => (
-              <div key={post.id} className="flex flex-col gap-1 text-sm border-b pb-2 last:border-0 last:pb-0 text-destructive">
+              <div key={post.id} className="flex flex-col gap-1 text-sm border-b pb-2 last:border-0 last:pb-0 text-rose-600">
                 <span className="font-medium">Failed to publish: {post.title}</span>
-                <Button variant="outline" size="sm" className="w-fit" onClick={() => setLocation("/posts?status=failed")}>Review</Button>
+                <Button variant="outline" size="sm" className="w-fit border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => setLocation("/posts?status=failed")}>Review</Button>
               </div>
             ))}
           </CardContent>

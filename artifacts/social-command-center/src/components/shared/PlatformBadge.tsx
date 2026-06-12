@@ -1,10 +1,9 @@
-import { Platform } from "@/data/mockPosts";
 import { SiFacebook, SiInstagram, SiTiktok, SiN8N } from "react-icons/si";
 import { Globe, Linkedin, Bot, ComponentIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ElementType } from "react";
 
-type ExtendedPlatform = Platform | "n8n" | "Local AI" | string;
+type ExtendedPlatform = string;
 
 interface PlatformBadgeProps {
   platform: ExtendedPlatform;
@@ -12,37 +11,37 @@ interface PlatformBadgeProps {
   showText?: boolean;
 }
 
-function getPlatformConfig(platform: ExtendedPlatform): { Icon: ElementType; colorClass: string } {
-  switch (platform) {
-    case "Facebook":
-      return { Icon: SiFacebook, colorClass: "text-[#1877F2] bg-[#1877F2]/10 border-[#1877F2]/20" };
-    case "Instagram":
-      return { Icon: SiInstagram, colorClass: "text-[#E4405F] bg-[#E4405F]/10 border-[#E4405F]/20" };
-    case "LinkedIn":
-      return { Icon: Linkedin, colorClass: "text-[#0A66C2] bg-[#0A66C2]/10 border-[#0A66C2]/20" };
-    case "TikTok":
-      return { Icon: SiTiktok, colorClass: "text-black dark:text-white bg-black/5 dark:bg-white/10 border-black/10 dark:border-white/20" };
-    case "Website":
-      return { Icon: Globe, colorClass: "text-teal-600 bg-teal-600/10 border-teal-600/20" };
+function getPlatformConfig(platform: ExtendedPlatform): { Icon: ElementType; colorClass: string; label: string } {
+  switch (platform.toLowerCase()) {
+    case "facebook":
+      return { Icon: SiFacebook, colorClass: "text-[#1877F2] bg-[#1877F2]/12 border-[#1877F2]/25", label: "Facebook" };
+    case "instagram":
+      return { Icon: SiInstagram, colorClass: "text-[#E4405F] bg-[#E4405F]/12 border-[#E4405F]/25", label: "Instagram" };
+    case "linkedin":
+      return { Icon: Linkedin, colorClass: "text-[#0A66C2] bg-[#0A66C2]/12 border-[#0A66C2]/25", label: "LinkedIn" };
+    case "tiktok":
+      return { Icon: SiTiktok, colorClass: "text-[#00B4B4] bg-[#00B4B4]/12 border-[#00B4B4]/25", label: "TikTok" };
+    case "website":
+      return { Icon: Globe, colorClass: "text-teal-600 bg-teal-500/12 border-teal-500/25", label: "Website" };
     case "n8n":
-      return { Icon: SiN8N, colorClass: "text-[#EA4B71] bg-[#EA4B71]/10 border-[#EA4B71]/20" };
-    case "Local AI":
-      return { Icon: Bot, colorClass: "text-violet-600 bg-violet-600/10 border-violet-600/20" };
+      return { Icon: SiN8N, colorClass: "text-[#EA4B71] bg-[#EA4B71]/12 border-[#EA4B71]/25", label: "n8n" };
+    case "local ai":
+      return { Icon: Bot, colorClass: "text-violet-600 bg-violet-500/12 border-violet-500/25", label: "Local AI" };
     default:
-      return { Icon: ComponentIcon, colorClass: "text-muted-foreground bg-muted border-border" };
+      return { Icon: ComponentIcon, colorClass: "text-muted-foreground bg-muted border-border", label: platform };
   }
 }
 
 export function PlatformBadge({ platform, className, showText = true }: PlatformBadgeProps) {
-  const { Icon, colorClass } = getPlatformConfig(platform);
+  const { Icon, colorClass, label } = getPlatformConfig(platform);
 
   return (
     <div
-      className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border", colorClass, className)}
+      className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium border", colorClass, className)}
       data-testid={`badge-platform-${platform.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <Icon className="w-3.5 h-3.5" />
-      {showText && <span>{platform}</span>}
+      {showText && <span>{label}</span>}
     </div>
   );
 }

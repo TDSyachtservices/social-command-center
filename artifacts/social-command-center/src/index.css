@@ -94,7 +94,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE */
+/* LIGHT MODE — Pastel Creative Studio palette */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -106,50 +106,50 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 210 20% 98%;
-  --foreground: 213 30% 15%;
-  --border: 210 16% 88%;
+  --background: 258 35% 96.5%;
+  --foreground: 268 32% 16%;
+  --border: 258 22% 86%;
   --card: 0 0% 100%;
-  --card-foreground: 213 30% 15%;
-  --card-border: 210 20% 90%;
-  
-  --sidebar: 215 35% 14%;
-  --sidebar-foreground: 210 20% 85%;
-  --sidebar-border: 215 35% 20%;
-  --sidebar-primary: 44 65% 55%;
-  --sidebar-primary-foreground: 215 35% 10%;
-  --sidebar-accent: 215 30% 22%;
-  --sidebar-accent-foreground: 210 20% 92%;
-  --sidebar-ring: 44 65% 55%;
+  --card-foreground: 268 32% 16%;
+  --card-border: 258 28% 90%;
+
+  --sidebar: 268 42% 17%;
+  --sidebar-foreground: 268 18% 87%;
+  --sidebar-border: 268 34% 24%;
+  --sidebar-primary: 340 72% 68%;
+  --sidebar-primary-foreground: 268 42% 10%;
+  --sidebar-accent: 268 32% 27%;
+  --sidebar-accent-foreground: 268 14% 94%;
+  --sidebar-ring: 340 72% 68%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 213 30% 15%;
-  --popover-border: 210 20% 88%;
+  --popover-foreground: 268 32% 16%;
+  --popover-border: 258 22% 86%;
 
-  --primary: 215 55% 28%;
+  --primary: 262 58% 52%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 16% 92%;
-  --secondary-foreground: 213 30% 25%;
-  --muted: 210 16% 94%;
-  --muted-foreground: 213 16% 48%;
-  --accent: 44 65% 52%;
-  --accent-foreground: 215 35% 12%;
+  --secondary: 258 28% 92%;
+  --secondary-foreground: 268 28% 28%;
+  --muted: 258 22% 93%;
+  --muted-foreground: 268 16% 50%;
+  --accent: 340 72% 60%;
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 210 16% 84%;
-  --ring: 215 55% 40%;
-  
-  --chart-1: 215 55% 40%;
-  --chart-2: 44 65% 52%;
-  --chart-3: 185 45% 42%;
-  --chart-4: 0 72% 51%;
-  --chart-5: 158 40% 45%;
+  --input: 258 22% 84%;
+  --ring: 262 58% 55%;
+
+  --chart-1: 262 62% 62%;
+  --chart-2: 340 65% 63%;
+  --chart-3: 158 48% 52%;
+  --chart-4: 38 78% 60%;
+  --chart-5: 200 60% 58%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.375rem;
+  --radius: 0.5rem;
   
   --shadow-2xs: 0px 2px 0px 0px rgba(0,0,0,0.02);
   --shadow-xs: 0px 2px 0px 0px rgba(0,0,0,0.04);
