@@ -3,7 +3,6 @@ builder = "nixpacks"
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @workspace/social-command-center run build"
 
 [deploy]
-startCommand = "npx serve dist -s -l 3000"
+staticDir = "dist/public"
 healthcheckPath = "/"
 healthcheckTimeout = 30
-restartPolicyType = "on_failure"
