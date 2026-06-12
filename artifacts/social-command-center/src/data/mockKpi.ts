@@ -6,10 +6,10 @@ export interface PlatformConfig {
 }
 
 export const PLATFORM_CONFIG: PlatformConfig[] = [
-  { key: "Facebook",  label: "Facebook",  color: "#1877F2", fill: "#1877F220" },
-  { key: "Instagram", label: "Instagram", color: "#E1306C", fill: "#E1306C20" },
-  { key: "LinkedIn",  label: "LinkedIn",  color: "#0A66C2", fill: "#0A66C220" },
-  { key: "TikTok",   label: "TikTok",    color: "#2DD4BF", fill: "#2DD4BF20" },
+  { key: "Facebook",  label: "Facebook",  color: "#7C6FD0", fill: "#7C6FD020" },
+  { key: "Instagram", label: "Instagram", color: "#E0607A", fill: "#E0607A20" },
+  { key: "LinkedIn",  label: "LinkedIn",  color: "#52ABC8", fill: "#52ABC820" },
+  { key: "TikTok",   label: "TikTok",    color: "#4BB893", fill: "#4BB89320" },
 ];
 
 export interface WeeklyDataPoint {
@@ -77,7 +77,7 @@ export interface PlatformSnapshot {
 export const platformSnapshots: PlatformSnapshot[] = [
   {
     platform: "Facebook",
-    color: "#1877F2",
+    color: "#7C6FD0",
     followers: 4820,
     followerGrowth: 220,
     followerGrowthPct: 4.8,
@@ -92,7 +92,7 @@ export const platformSnapshots: PlatformSnapshot[] = [
   },
   {
     platform: "Instagram",
-    color: "#E1306C",
+    color: "#E0607A",
     followers: 12450,
     followerGrowth: 650,
     followerGrowthPct: 5.5,
@@ -107,7 +107,7 @@ export const platformSnapshots: PlatformSnapshot[] = [
   },
   {
     platform: "LinkedIn",
-    color: "#0A66C2",
+    color: "#52ABC8",
     followers: 2310,
     followerGrowth: 140,
     followerGrowthPct: 6.4,
@@ -122,7 +122,7 @@ export const platformSnapshots: PlatformSnapshot[] = [
   },
   {
     platform: "TikTok",
-    color: "#2DD4BF",
+    color: "#4BB893",
     followers: 8900,
     followerGrowth: 700,
     followerGrowthPct: 8.5,
@@ -262,17 +262,17 @@ export const postPerformance: PostPerformanceRow[] = [
 ];
 
 export const engagementByPlatform = [
-  { platform: "LinkedIn",  rate: 4.2, color: "#0A66C2" },
-  { platform: "Instagram", rate: 5.8, color: "#E1306C" },
-  { platform: "TikTok",   rate: 6.1, color: "#2DD4BF" },
-  { platform: "Facebook",  rate: 2.4, color: "#1877F2" },
+  { platform: "LinkedIn",  rate: 4.2, color: "#52ABC8" },
+  { platform: "Instagram", rate: 5.8, color: "#E0607A" },
+  { platform: "TikTok",   rate: 6.1, color: "#4BB893" },
+  { platform: "Facebook",  rate: 2.4, color: "#7C6FD0" },
 ];
 
 export const followerDistribution = [
-  { name: "Instagram", value: 12450, color: "#E1306C" },
-  { name: "TikTok",   value: 8900,  color: "#2DD4BF" },
-  { name: "Facebook",  value: 4820,  color: "#1877F2" },
-  { name: "LinkedIn",  value: 2310,  color: "#0A66C2" },
+  { name: "Instagram", value: 12450, color: "#E0607A" },
+  { name: "TikTok",   value: 8900,  color: "#4BB893" },
+  { name: "Facebook",  value: 4820,  color: "#7C6FD0" },
+  { name: "LinkedIn",  value: 2310,  color: "#52ABC8" },
 ];
 
 export const summaryStats = {

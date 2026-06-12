@@ -16,7 +16,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       colorClass = "bg-slate-100 text-slate-600 border-slate-200";
       break;
     case "scheduled":
-      colorClass = "bg-sky-100 text-sky-700 border-sky-200";
+      colorClass = "bg-cyan-100 text-cyan-700 border-cyan-200";
       break;
     case "publishing":
       colorClass = "bg-violet-100 text-violet-700 border-violet-200";
