@@ -23,6 +23,7 @@ export function TopHeader() {
     if (location === "/settings") return "Settings";
     if (location.startsWith("/media-optimizer")) return "Media Optimizer";
     if (location === "/media-library") return "Media Library";
+    if (location.startsWith("/kpi")) return "KPI Dashboard";
     return "Command Center";
   };
 
