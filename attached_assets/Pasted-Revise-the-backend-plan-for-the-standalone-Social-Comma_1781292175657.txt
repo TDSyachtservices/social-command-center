@@ -1,0 +1,501 @@
+Revise the backend plan for the standalone Social Command Center app.
+
+Infrastructure:
+- GitHub for source control
+- Railway for deployment
+- Railway PostgreSQL for database
+- Railway backend API using Node.js with Express or Fastify
+- Railway background worker for media processing
+- Sharp for image resizing/cropping
+- FFmpeg for video resizing/cropping/transcoding
+- Cloudflare R2 or Backblaze B2 for low-cost S3-compatible object storage
+- n8n for scheduled trigger automation
+- Local AI computer for future caption/reply generation
+
+Important:
+Do not use Cloudinary or any heavy subscription-based media service.
+Do not use paid media transformation services unless added later as an optional fallback.
+The app should self-process media using Sharp and FFmpeg.
+
+Goal:
+Build the backend foundation that can store originals, generate platform-specific image/video versions, schedule posts, mock publish, manage comments, and prepare for official social API integrations.
+
+Storage:
+Use an S3-compatible storage abstraction so the provider can be changed later.
+
+Supported storage providers:
+- Cloudflare R2
+- Backblaze B2
+- Bunny Storage if implemented separately
+- AWS S3 optional later
+
+Create environment variables:
+
+DATABASE_URL=
+PORT=3001
+FRONTEND_URL=
+API_BASE_URL=
+
+INTERNAL_API_KEY=
+N8N_WEBHOOK_SECRET=
+TOKEN_ENCRYPTION_KEY=
+
+S3_ENDPOINT=
+S3_REGION=
+S3_BUCKET=
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_PUBLIC_BASE_URL=
+S3_FORCE_PATH_STYLE=true
+
+MEDIA_PROCESSING_MODE=self_hosted
+IMAGE_PROCESSOR=sharp
+VIDEO_PROCESSOR=ffmpeg
+
+LOCAL_AI_ENDPOINT=
+LOCAL_AI_API_KEY=
+
+META_CLIENT_ID=
+META_CLIENT_SECRET=
+LINKEDIN_CLIENT_ID=
+LINKEDIN_CLIENT_SECRET=
+TIKTOK_CLIENT_ID=
+TIKTOK_CLIENT_SECRET=
+
+Backend structure:
+
+/server
+  /src
+    index.ts
+    app.ts
+    routes/
+      media.routes.ts
+      posts.routes.ts
+      accounts.routes.ts
+      scheduler.routes.ts
+      inbox.routes.ts
+      logs.routes.ts
+      settings.routes.ts
+      ai.routes.ts
+      website.routes.ts
+      health.routes.ts
+    services/
+      storage.service.ts
+      media-analysis.service.ts
+      image-processing.service.ts
+      video-processing.service.ts
+      media-validation.service.ts
+      media-processing-queue.service.ts
+      scheduler.service.ts
+      publish.service.ts
+      token.service.ts
+      account.service.ts
+      inbox.service.ts
+      ai.service.ts
+      website.service.ts
+    workers/
+      media-worker.ts
+      scheduled-publish-worker.ts
+      comment-sync-worker.ts
+    adapters/
+      facebook.adapter.ts
+      instagram.adapter.ts
+      linkedin.adapter.ts
+      tiktok.adapter.ts
+      website.adapter.ts
+    db/
+      prisma.ts
+      seed.ts
+    config/
+      media-presets.ts
+      storage.ts
+    utils/
+      response.ts
+      errors.ts
+      auth.ts
+      validation.ts
+      ids.ts
+      time.ts
+      logger.ts
+  prisma/
+    schema.prisma
+  Dockerfile
+  railway.json
+  package.json
+  README.md
+
+Database:
+Use PostgreSQL and Prisma.
+
+Create these models:
+- User
+- SocialAccount
+- MediaAsset
+- MediaVersion
+- MediaProcessingJob
+- ScheduledPost
+- ScheduledPostPlatform
+- PublishLog
+- SocialComment
+- SocialCommentReply
+- SocialInboxNote
+- SocialInboxSyncLog
+- Setting
+- AuditLog
+
+MediaAsset fields:
+- id
+- originalFileName
+- originalFileType
+- originalMimeType
+- originalSizeBytes
+- originalWidth
+- originalHeight
+- originalDurationSeconds
+- originalStorageKey
+- originalPublicUrl
+- uploadedBy
+- processingStatus
+- qualityScoreLabel
+- validationStatus
+- createdAt
+- updatedAt
+
+MediaVersion fields:
+- id
+- mediaAssetId
+- platform
+- placement
+- width
+- height
+- aspectRatio
+- format
+- mimeType
+- fileSizeBytes
+- storageKey
+- publicUrl
+- processingStatus
+- cropMode
+- focalPointJson
+- safeZoneWarningsJson
+- qualityScore
+- qualityScoreLabel
+- validationStatus
+- validationErrorsJson
+- validationWarningsJson
+- createdAt
+- updatedAt
+
+MediaProcessingJob fields:
+- id
+- mediaAssetId
+- mediaVersionId
+- jobType
+- status
+- attempts
+- errorMessage
+- queuedAt
+- startedAt
+- completedAt
+- updatedAt
+
+Media upload flow:
+1. Frontend uploads original media to backend or receives a presigned upload URL.
+2. Backend stores original file in S3-compatible storage.
+3. Backend creates MediaAsset record.
+4. Backend analyzes dimensions, duration, file type, and size.
+5. Backend creates MediaVersion records for selected platform presets.
+6. Backend creates MediaProcessingJob records.
+7. Media worker processes jobs using Sharp or FFmpeg.
+8. Worker uploads processed versions to storage.
+9. Worker updates MediaVersion status and publicUrl.
+10. App uses the specific MediaVersion for each platform post.
+
+Implement storage.service.ts:
+- uploadObject()
+- getObject()
+- deleteObject()
+- getPublicUrl()
+- createPresignedUploadUrl()
+- createPresignedDownloadUrl()
+
+Use AWS SDK S3 client because R2 and B2 are S3-compatible.
+
+Implement image-processing.service.ts with Sharp:
+- resizeAndCropImage()
+- createSquareImage()
+- createPortraitImage()
+- createLandscapeImage()
+- createVerticalStoryImage()
+- createWebsiteHeroImage()
+- output JPG
+- preserve original
+- avoid upscaling warnings
+- support crop modes:
+  - fit
+  - fill
+  - smart_crop
+  - manual_crop
+  - blurred_background_fill
+
+Implement video-processing.service.ts with FFmpeg:
+- transcodeToMp4()
+- resizeAndCropVideo()
+- createVerticalVideo()
+- createSquareVideo()
+- createLandscapeVideo()
+- extractThumbnail()
+- output MP4
+- preserve original
+- support status:
+  - queued
+  - processing
+  - ready
+  - needs_review
+  - failed
+
+Important:
+Do not process large videos inside normal API request handlers.
+Use a background worker process.
+API should return quickly after queueing jobs.
+
+Media presets:
+
+Images:
+Instagram feed_square 1080x1080 JPG
+Instagram feed_portrait 1080x1350 JPG
+Instagram feed_landscape 1080x566 JPG
+Instagram story_reel 1080x1920 JPG
+
+Facebook feed_square 1080x1080 JPG
+Facebook feed_portrait 1080x1350 JPG
+Facebook link_landscape 1200x630 JPG
+Facebook story_reel 1080x1920 JPG
+
+LinkedIn feed_landscape 1200x627 JPG
+LinkedIn feed_square 1080x1080 JPG
+LinkedIn feed_portrait 1080x1350 JPG
+
+TikTok vertical_photo 1080x1920 JPG
+
+Website hero_image 1920x1080 JPG
+Website blog_feature 1200x675 JPG
+Website project_gallery 1600x1200 JPG
+Website thumbnail 600x400 JPG
+Website square_thumbnail 800x800 JPG
+
+Videos:
+Instagram reel_story 1080x1920 MP4
+Instagram feed_square 1080x1080 MP4
+Instagram feed_portrait 1080x1350 MP4
+
+Facebook reel_story 1080x1920 MP4
+Facebook feed_square 1080x1080 MP4
+Facebook feed_landscape 1920x1080 MP4
+
+LinkedIn feed_landscape 1920x1080 MP4
+LinkedIn feed_square 1080x1080 MP4
+LinkedIn feed_portrait 1080x1350 MP4
+
+TikTok vertical_video 1080x1920 MP4
+
+Website hero_video 1920x1080 MP4
+Website short_feature_video 1080x1920 MP4
+Website thumbnail_from_video JPG
+
+Media validation:
+Create media-validation.service.ts.
+
+Validate:
+- original resolution
+- target resolution
+- aspect ratio compatibility
+- crop severity
+- upscaling required
+- file type compatibility
+- video duration placeholder
+- platform media requirement
+
+Quality labels:
+- Excellent
+- Good
+- Needs Review
+- Poor
+
+Validation statuses:
+- READY
+- WARNING
+- FAILED
+- NEEDS_REVIEW
+- PROCESSING
+
+Rules:
+- Warn if source is smaller than target.
+- Warn if severe crop is required.
+- Fail unsupported file types.
+- Block Instagram/TikTok scheduling if required media is missing.
+- Block publishing if selected media version is not READY or WARNING.
+- Allow saving draft even if media is not ready.
+
+Media API endpoints:
+POST /api/media/upload
+POST /api/media/init-upload
+POST /api/media/upload-complete
+GET /api/media
+GET /api/media/:id
+GET /api/media/:id/versions
+POST /api/media/:id/generate-versions
+POST /api/media/:id/regenerate
+POST /api/media/:id/crop
+POST /api/media/:id/process
+DELETE /api/media/:id
+
+Post API endpoints:
+GET /api/posts
+POST /api/posts
+GET /api/posts/:id
+PUT /api/posts/:id
+DELETE /api/posts/:id
+POST /api/posts/:id/schedule
+POST /api/posts/:id/publish
+POST /api/posts/:id/retry
+
+Scheduler/n8n endpoints:
+GET /api/scheduled-posts/due?limit=10
+POST /api/scheduled-posts/:id/publish
+POST /api/webhooks/n8n/publish-due
+
+Social inbox endpoints:
+GET /api/social-inbox/comments
+GET /api/social-inbox/comments/:id
+POST /api/social-inbox/comments/:id/reply
+POST /api/social-inbox/comments/:id/status
+POST /api/social-inbox/comments/:id/hide
+POST /api/social-inbox/comments/:id/assign
+POST /api/social-inbox/comments/:id/note
+POST /api/social-inbox/sync
+GET /api/social-inbox/logs
+
+Connected accounts endpoints:
+GET /api/accounts
+GET /api/accounts/:id
+POST /api/accounts/:platform/connect-mock
+POST /api/accounts/:id/disconnect
+POST /api/accounts/:id/check
+GET /api/accounts/:id/capabilities
+
+Mock social adapters:
+Create adapters for:
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+- Website
+
+Each adapter should expose:
+- getAuthUrl()
+- handleOAuthCallback()
+- refreshToken()
+- publishPost()
+- getComments()
+- replyToComment()
+- hideComment()
+- getCapabilities()
+
+For now:
+- Return mock success.
+- Do not connect live APIs.
+- Do not publish real posts.
+- Do not send real replies.
+
+Security:
+- CORS allowlist with FRONTEND_URL
+- Internal API key for n8n endpoints
+- Request validation
+- Structured errors
+- Audit logs
+- Token encryption placeholder
+- Never expose secrets
+- Never commit .env
+- Idempotency guard for publish endpoints
+
+Response format:
+Success:
+{
+  "success": true,
+  "data": {},
+  "meta": {}
+}
+
+Error:
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Human-readable message",
+    "details": {}
+  }
+}
+
+Railway deployment:
+Create Dockerfile that installs:
+- Node.js dependencies
+- Sharp-compatible dependencies if needed
+- FFmpeg binary
+
+Add package scripts:
+- dev
+- build
+- start
+- worker:media
+- worker:publish
+- prisma:migrate
+- prisma:seed
+
+Railway services:
+Recommend separate services:
+1. web API service
+2. media worker service
+3. PostgreSQL database
+
+README should explain:
+- GitHub setup
+- Railway setup
+- PostgreSQL setup
+- S3-compatible storage setup for R2 or B2
+- Environment variables
+- Running migrations
+- Running seed
+- Starting API
+- Starting media worker
+- Connecting n8n
+- Testing media processing
+
+Do not:
+- use Cloudinary
+- use heavy subscription media services
+- process large videos in web request handlers
+- overwrite originals
+- expose tokens
+- connect live social APIs yet
+- break existing frontend
+- use browser scraping
+- use unofficial social APIs
+
+Deliverables:
+- Railway-ready backend
+- Prisma schema
+- S3-compatible storage service
+- Sharp image processor
+- FFmpeg video processor
+- background media worker
+- media version generation
+- media validation
+- post scheduling API
+- n8n endpoints
+- mock social adapters
+- social inbox API
+- logs/settings APIs
+- README deployment guide
+- no TypeScript errors
+- no console errors
