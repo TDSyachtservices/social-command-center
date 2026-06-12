@@ -74,7 +74,7 @@ export function CommentDetailPanel({ comment }: CommentDetailPanelProps) {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Priority</label>
-            <Select value={priority} onValueChange={setPriority}>
+            <Select value={priority} onValueChange={(v) => setPriority(v as typeof priority)}>
               <SelectTrigger className="h-8 w-[140px] text-xs">
                 <SelectValue />
               </SelectTrigger>

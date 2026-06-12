@@ -67,3 +67,45 @@ export async function mockCheckConnection(accountId: string): Promise<{ connecte
   await new Promise(resolve => setTimeout(resolve, 800));
   return { connected: true, status: "connected" };
 }
+
+// TODO: Real processing should use Sharp (images) or FFmpeg (video) server-side
+export async function mockAnalyzeMedia(file: File): Promise<{ width: number; height: number; duration: number | null; aspectRatio: string; sizeBytes: number }> {
+  await new Promise(resolve => setTimeout(resolve, 800));
+  return { width: 1920, height: 1080, duration: file.type.startsWith("video") ? 30 : null, aspectRatio: "16:9", sizeBytes: file.size };
+}
+
+export async function mockGenerateMediaVersions(assetId: string, presets: string[]): Promise<{ versions: any[]; processingTime: number }> {
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  return { versions: [], processingTime: 1200 };
+}
+
+export async function mockValidateMediaForPlatform(assetId: string, platform: string, placement: string): Promise<{ valid: boolean; qualityScore: string; warnings: string[]; errors: string[] }> {
+  await new Promise(resolve => setTimeout(resolve, 600));
+  return { valid: true, qualityScore: "Good", warnings: [], errors: [] };
+}
+
+export async function mockRegenerateVersion(versionId: string, cropMode: string, focalPoint: { x: number; y: number }): Promise<{ success: boolean; version: any }> {
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  return { success: true, version: {} };
+}
+
+export async function mockApplyManualCrop(versionId: string, cropData: any): Promise<{ success: boolean }> {
+  await new Promise(resolve => setTimeout(resolve, 800));
+  return { success: true };
+}
+
+export async function mockExtractVideoThumbnail(assetId: string, timestampSeconds: number): Promise<{ success: boolean; thumbnailUrl: string }> {
+  await new Promise(resolve => setTimeout(resolve, 900));
+  return { success: true, thumbnailUrl: "placeholder" };
+}
+
+export async function mockCalculateQualityScore(originalWidth: number, originalHeight: number, targetWidth: number, targetHeight: number): Promise<{ score: string; reason: string }> {
+  await new Promise(resolve => setTimeout(resolve, 300));
+  if (targetWidth > originalWidth * 1.5 || targetHeight > originalHeight * 1.5) {
+    return { score: "Poor", reason: "Target dimensions significantly exceed original" };
+  }
+  if (originalWidth >= targetWidth * 2 && originalHeight >= targetHeight * 2) {
+    return { score: "Excellent", reason: "High resolution source" };
+  }
+  return { score: "Good", reason: "Acceptable resolution" };
+}

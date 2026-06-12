@@ -16,6 +16,8 @@ import CommentLogs from "@/pages/comment-logs";
 import AIAssistant from "@/pages/ai-assistant";
 import WebsiteApi from "@/pages/website-api";
 import Settings from "@/pages/settings";
+import MediaLibrary from "@/pages/media-library";
+import MediaOptimizer from "@/pages/media-optimizer";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +27,9 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/create-post" component={CreatePost} />
+        <Route path="/media-library" component={MediaLibrary} />
+        <Route path="/media-optimizer" component={MediaOptimizer} />
+        <Route path="/media-optimizer/:assetId" component={MediaOptimizer} />
         <Route path="/calendar" component={Calendar} />
         <Route path="/posts" component={Posts} />
         <Route path="/social-inbox" component={SocialInbox} />

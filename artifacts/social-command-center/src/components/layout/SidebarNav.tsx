@@ -1,13 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare, 
-  Link2, ScrollText, MessageCircle, Bot, Globe, Settings 
+  Link2, ScrollText, MessageCircle, Bot, Globe, Settings,
+  Image as ImageIcon, Layers
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/create-post", label: "Create Post", icon: PenSquare },
+  { href: "/media-library", label: "Media Library", icon: ImageIcon },
+  { href: "/media-optimizer", label: "Media Optimizer", icon: Layers },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/posts", label: "Posts", icon: FileText },
   { href: "/social-inbox", label: "Social Inbox", icon: MessageSquare },

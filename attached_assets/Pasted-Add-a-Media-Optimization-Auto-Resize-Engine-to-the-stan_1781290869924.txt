@@ -1,0 +1,343 @@
+Add a Media Optimization / Auto-Resize Engine to the standalone Social Command Center app.
+
+Goal:
+The app must allow a user to upload one original image or video and automatically generate the correct platform-specific media versions for Facebook, Instagram, LinkedIn, TikTok, and Website publishing.
+
+Important:
+- Keep the app standalone.
+- Keep the existing Social Command Center UI and brand style.
+- Do not connect live social APIs yet.
+- Do not publish anything yet.
+- Use mock processing or frontend simulation if backend processing is not ready.
+- Build the UI and data structure so real image/video processing can be added later.
+- Do not rely on social platforms to crop media correctly.
+- Store the original uploaded asset and generate separate platform-ready derivatives.
+
+Add a new module called:
+Media Optimizer
+
+Add routes/screens:
+- /media-library
+- /media-optimizer
+- /media-optimizer/:assetId
+or follow the existing routing pattern.
+
+Core concept:
+User uploads one original asset.
+The app creates:
+1. Original asset
+2. Facebook-ready version
+3. Instagram-ready version
+4. LinkedIn-ready version
+5. TikTok-ready version
+6. Website-ready version
+
+Each generated version should have:
+- platform
+- placement
+- width
+- height
+- aspect ratio
+- file format
+- file size placeholder
+- status
+- preview URL
+- processing notes
+- safe-zone warning if needed
+
+Supported media types:
+- Image
+- Video
+
+Image output presets:
+
+Instagram:
+- Feed Square: 1080 x 1080
+- Feed Portrait: 1080 x 1350
+- Feed Landscape: 1080 x 566
+- Story / Reel Cover: 1080 x 1920
+
+Facebook:
+- Feed Square: 1080 x 1080
+- Feed Portrait: 1080 x 1350
+- Link / Landscape: 1200 x 630
+- Story / Reel: 1080 x 1920
+
+LinkedIn:
+- Feed Landscape: 1200 x 627
+- Feed Square: 1080 x 1080
+- Feed Portrait: 1080 x 1350
+
+TikTok:
+- Vertical Photo / Slideshow: 1080 x 1920
+
+Website:
+- Hero Image: 1920 x 1080
+- Blog / Learning Center Feature: 1200 x 675
+- Project Gallery: 1600 x 1200
+- Thumbnail: 600 x 400
+- Square Thumbnail: 800 x 800
+
+Video output presets:
+
+Instagram:
+- Reel / Story: 1080 x 1920 MP4
+- Feed Square: 1080 x 1080 MP4
+- Feed Portrait: 1080 x 1350 MP4
+
+Facebook:
+- Reel / Story: 1080 x 1920 MP4
+- Feed Square: 1080 x 1080 MP4
+- Feed Landscape: 1920 x 1080 MP4
+
+LinkedIn:
+- Feed Landscape: 1920 x 1080 MP4
+- Feed Square: 1080 x 1080 MP4
+- Feed Portrait: 1080 x 1350 MP4
+
+TikTok:
+- Vertical Video: 1080 x 1920 MP4
+
+Website:
+- Hero Video: 1920 x 1080 MP4
+- Short Feature Video: 1080 x 1920 MP4
+- Thumbnail image extracted from video
+
+Add frontend fields to media assets:
+- id
+- originalFileName
+- originalFileType
+- originalMimeType
+- originalWidth
+- originalHeight
+- originalDuration
+- originalSizeBytes
+- originalUrl
+- uploadedAt
+- uploadedBy
+- processingStatus
+- generatedVersions[]
+
+Each generated version:
+- id
+- mediaAssetId
+- platform
+- placement
+- width
+- height
+- aspectRatio
+- format
+- mimeType
+- fileSizeBytes
+- previewUrl
+- processingStatus
+- cropMode
+- focalPoint
+- safeZoneWarnings
+- qualityScore
+- validationErrors
+- validationWarnings
+
+Crop modes:
+- fit
+- fill
+- smart_crop
+- manual_crop
+- blurred_background_fill
+
+Default crop behavior:
+- For platform feeds, use smart_crop by default.
+- For TikTok, Instagram Reels, Facebook Reels, and Stories, default to 9:16 vertical crop.
+- For LinkedIn feed, default to landscape 1200 x 627 unless user selects square or portrait.
+- For website hero, default to 16:9 landscape.
+- Always preserve the original file.
+
+Add a media optimization screen.
+
+Media Optimizer screen should show:
+- original uploaded asset preview
+- detected dimensions
+- detected aspect ratio
+- detected file type
+- file size
+- duration if video
+- quality warnings
+- platform output checklist
+- generated previews for each platform
+
+For each platform preview card, show:
+- platform
+- placement
+- recommended size
+- generated size
+- pass/warning/fail status
+- crop preview
+- edit crop button
+- regenerate button
+- use this version toggle
+
+Add manual crop adjustment UI placeholder:
+- focal point selector
+- drag-to-reposition placeholder
+- zoom slider placeholder
+- crop mode selector
+- reset crop button
+- apply crop button
+
+Add safe zone overlays:
+- TikTok vertical safe zone placeholder
+- Instagram Reel/Story safe zone placeholder
+- Facebook Story/Reel safe zone placeholder
+- Website hero safe zone placeholder
+
+Safe zone purpose:
+Warn users when important text, logos, or faces may be too close to the edge or covered by platform UI.
+
+Use mock/simulated safe-zone warnings for now:
+- “Logo may be too close to lower edge.”
+- “Text may be cropped in vertical format.”
+- “Subject may be off-center for 9:16.”
+- “Landscape image will need background fill for TikTok.”
+
+Add validation logic:
+- If original image is too small for a selected output, show warning.
+- If video is horizontal but selected for TikTok/Instagram Reel, show crop warning.
+- If image aspect ratio is very wide, warn before vertical conversion.
+- If media is missing for Instagram or TikTok, block scheduling.
+- If video file format is unsupported, show warning.
+- If generated version is missing for selected platform, block scheduling.
+
+Add media quality score:
+Create a frontend-only quality score based on:
+- original resolution
+- selected output size
+- aspect ratio compatibility
+- file type
+- crop severity
+- whether upscaling is required
+
+Score labels:
+- Excellent
+- Good
+- Needs Review
+- Poor
+
+Example:
+A 4000 x 3000 image used for 1080 x 1080 should be Excellent.
+A 1200 x 630 image forced into 1080 x 1920 should be Needs Review.
+A 600 x 400 image used for 1920 x 1080 should be Poor.
+
+Update Create Post screen:
+- When user uploads media, send it into Media Optimizer flow.
+- Show generated platform versions below the media upload area.
+- When user selects platforms, automatically select the matching optimized media version.
+- Allow user to override version per platform.
+- Show warning badges if selected media is not ideal for a platform.
+- Do not allow scheduling if a required platform has failed media validation.
+
+Update Platform Preview cards:
+Each platform preview should use the optimized version for that platform.
+Do not show the same original asset blindly across all platforms.
+Show:
+- selected generated version
+- dimensions
+- crop mode
+- quality score
+- validation status
+
+Update Media Library:
+Create a media library screen that shows:
+- original uploaded assets
+- asset type
+- upload date
+- generated versions count
+- platforms ready
+- quality score
+- actions: view, optimize, duplicate, delete
+
+Media Library filters:
+- image
+- video
+- ready for Facebook
+- ready for Instagram
+- ready for LinkedIn
+- ready for TikTok
+- ready for Website
+- needs review
+- failed processing
+
+Mock processing:
+Create mock async functions:
+- mockAnalyzeMedia()
+- mockGenerateMediaVersions()
+- mockValidateMediaForPlatform()
+- mockRegenerateVersion()
+- mockApplyManualCrop()
+- mockExtractVideoThumbnail()
+- mockCalculateQualityScore()
+
+Do not perform real FFmpeg processing yet unless the environment already supports it safely.
+For now, simulate processing and store generated version objects.
+
+Future backend notes:
+Add TODO comments that real processing should happen server-side using:
+- Sharp for image resizing/cropping
+- FFmpeg for video transcoding/cropping
+- Cloudinary transformations as an alternative
+- S3/Cloudflare R2/Cloudinary for storage
+- background job queue for video processing
+
+Future backend endpoints:
+POST /api/media/upload
+GET /api/media
+GET /api/media/:id
+POST /api/media/:id/analyze
+POST /api/media/:id/generate-versions
+POST /api/media/:id/regenerate
+POST /api/media/:id/crop
+POST /api/media/:id/extract-thumbnail
+GET /api/media/:id/versions
+DELETE /api/media/:id
+
+Future database tables:
+- media_assets
+- media_versions
+- media_processing_jobs
+- media_validation_results
+
+Add media version fields to scheduled_post_platforms:
+- media_asset_id
+- media_version_id
+- media_validation_status
+- media_quality_score
+
+Important:
+- All generated versions must be traceable back to the original upload.
+- Never overwrite the original.
+- A scheduled platform post should point to the exact generated media version it will publish.
+- The app should clearly show when a platform’s media is ready, needs review, or failed.
+
+Do not:
+- Do not connect live social APIs.
+- Do not actually publish.
+- Do not expose tokens.
+- Do not remove the existing Social Scheduler or Social Inbox features.
+- Do not break existing mock workflows.
+- Do not change the brand style.
+- Do not add unnecessary dependencies unless justified.
+
+Deliverables:
+- Media Library screen
+- Media Optimizer screen
+- Updated Create Post media workflow
+- Updated platform previews using optimized media versions
+- Mock generated media versions
+- Mock quality scoring
+- Mock validation warnings
+- Mock crop controls
+- Mock safe-zone overlays
+- Future backend endpoint notes
+- Future database notes
+- No TypeScript errors
+- No console errors
+- Responsive layout
