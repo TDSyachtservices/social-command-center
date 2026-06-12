@@ -1,34 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { mockPosts } from "@/data/mockPosts";
+import { listPosts } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { PlatformBadge } from "@/components/shared/PlatformBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+
+type CalPost = { id: string; title: string; scheduledAt: string };
+
+const toCalPosts = (): CalPost[] =>
+  mockPosts
+    .filter((p) => p.status === "scheduled" && p.scheduledAt)
+    .map((p) => ({ id: p.id, title: p.title, scheduledAt: p.scheduledAt! }));
 
 export default function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Basic calendar logic (mock)
+  const [scheduledPosts, setScheduledPosts] = useState<CalPost[]>(toCalPosts());
+
+  useEffect(() => {
+    listPosts({ status: "SCHEDULED" }).then((api) => {
+      if (api !== null) {
+        setScheduledPosts(
+          api
+            .filter((p) => p.scheduledAt)
+            .map((p) => ({ id: p.id, title: p.title, scheduledAt: p.scheduledAt! })),
+        );
+      }
+    });
+  }, []);
+
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-  
+
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  
+
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
 
-  // Get scheduled posts for this month
-  const scheduledPosts = mockPosts.filter(p => p.status === "scheduled" && p.scheduledAt);
-
-  const getPostsForDay = (day: number) => {
-    return scheduledPosts.filter(p => {
-      const pDate = new Date(p.scheduledAt!);
-      return pDate.getFullYear() === currentDate.getFullYear() && 
-             pDate.getMonth() === currentDate.getMonth() && 
-             pDate.getDate() === day;
+  const getPostsForDay = (day: number) =>
+    scheduledPosts.filter((p) => {
+      const d = new Date(p.scheduledAt);
+      return d.getFullYear() === currentDate.getFullYear() &&
+        d.getMonth() === currentDate.getMonth() &&
+        d.getDate() === day;
     });
-  };
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -60,7 +74,7 @@ export default function Calendar() {
             const day = i + 1;
             const isToday = new Date().getDate() === day && new Date().getMonth() === currentDate.getMonth() && new Date().getFullYear() === currentDate.getFullYear();
             const dayPosts = getPostsForDay(day);
-            
+
             return (
               <div key={day} className={`border-b border-r p-2 min-h-[120px] transition-colors hover:bg-muted/5 ${isToday ? 'bg-primary/5' : ''}`}>
                 <div className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
@@ -69,7 +83,7 @@ export default function Calendar() {
                 <div className="mt-2 space-y-1">
                   {dayPosts.map(post => (
                     <div key={post.id} className="text-xs p-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded truncate cursor-pointer hover:bg-blue-100 transition-colors">
-                      <span className="font-medium mr-1">{new Date(post.scheduledAt!).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="font-medium mr-1">{new Date(post.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                       {post.title}
                     </div>
                   ))}

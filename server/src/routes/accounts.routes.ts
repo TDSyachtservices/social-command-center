@@ -100,7 +100,41 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   sendSuccess(res, { deleted: true });
 });
 
+// ─── POST /api/accounts/connect-mock ─────────────────────────────────────────
+// Creates a new mock-connected account (no existing ID required).
+const connectMockSchema = z.object({
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE", "N8N", "LOCAL_AI"]),
+  accountName: z.string().min(1).max(200),
+  accountId: z.string().min(1).max(200),
+  scopes: z.array(z.string()).default([]),
+});
+
+router.post(
+  "/connect-mock",
+  validateBody(connectMockSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof connectMockSchema>;
+    const account = await prisma.socialAccount.create({
+      data: {
+        platform: body.platform,
+        accountName: body.accountName,
+        accountId: body.accountId,
+        connectionStatus: "connected",
+        postingCapability: true,
+        commentReadCapability: true,
+        commentReplyCapability: true,
+        tokenEncrypted: "MOCK_TOKEN",
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        lastSync: new Date(),
+        scopes: body.scopes,
+      },
+    });
+    sendSuccess(res, { ...account, mock: true, note: "Mock OAuth connect — no real token" });
+  },
+);
+
 // ─── POST /api/accounts/:id/connect-mock ───────────────────────────────────
+// Reconnects an existing account by ID with a fresh mock token.
 router.post("/:id/connect-mock", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const existing = await prisma.socialAccount.findUnique({ where: { id } });

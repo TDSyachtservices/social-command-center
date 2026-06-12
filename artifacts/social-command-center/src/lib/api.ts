@@ -507,8 +507,11 @@ export async function listWebsiteDrafts(): Promise<unknown[] | null> {
   return result.ok ? result.data : null;
 }
 
-export async function publishWebsiteDraft(draftId: string): Promise<boolean> {
-  const result = await apiFetch<unknown>(`/api/website/publish/${draftId}`, { method: "POST" });
+export async function publishWebsiteDraft(postId: string): Promise<boolean> {
+  const result = await apiFetch<unknown>("/api/website/publish", {
+    method: "POST",
+    body: JSON.stringify({ postId }),
+  });
   return result.ok;
 }
 
@@ -519,7 +522,15 @@ export async function getWebsiteSyncLogs(): Promise<unknown[] | null> {
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 
+// Health endpoint returns the direct { status, db } shape (not the success envelope).
 export async function checkHealth(): Promise<{ ok: boolean; db?: string }> {
-  const result = await apiFetch<{ status: string; db: string }>("/api/health");
-  return result.ok ? { ok: true, db: result.data.db } : { ok: false };
+  if (!BASE_URL) return { ok: false };
+  try {
+    const res = await fetch(`${BASE_URL}/api/health`);
+    if (!res.ok) return { ok: false };
+    const json = (await res.json()) as { status: string; db: string };
+    return { ok: json.status === "ok", db: json.db };
+  } catch {
+    return { ok: false };
+  }
 }

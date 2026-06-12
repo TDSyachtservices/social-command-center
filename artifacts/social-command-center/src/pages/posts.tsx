@@ -39,7 +39,7 @@ export default function Posts() {
 
   useEffect(() => {
     listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
-      if (apiPosts !== null && apiPosts.length > 0) {
+      if (apiPosts !== null) {
         setPosts(apiPosts.map((p) => ({
           id: p.id,
           title: p.title,

@@ -38,7 +38,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     listPosts({ limit: 100 }).then((apiPosts) => {
-      if (apiPosts !== null && apiPosts.length > 0) {
+      if (apiPosts !== null) {
         setPosts(apiPosts.map(p => ({
           id: p.id,
           title: p.title,
@@ -49,7 +49,7 @@ export default function Dashboard() {
       }
     });
     listComments({ limit: 50 }).then((apiComments) => {
-      if (apiComments !== null && apiComments.length > 0) {
+      if (apiComments !== null) {
         setComments(apiComments.map(c => ({
           id: c.id,
           platform: c.platform.toLowerCase(),
@@ -60,7 +60,7 @@ export default function Dashboard() {
       }
     });
     listAccounts().then((apiAccounts) => {
-      if (apiAccounts !== null && apiAccounts.length > 0) {
+      if (apiAccounts !== null) {
         setAccounts(apiAccounts.map(a => ({
           id: a.id,
           accountName: a.accountName,
@@ -69,7 +69,7 @@ export default function Dashboard() {
       }
     });
     listPublishLogs().then((apiLogs) => {
-      if (apiLogs !== null && apiLogs.length > 0) {
+      if (apiLogs !== null) {
         setLogs(apiLogs.map(l => ({
           id: l.id,
           postTitle: l.postTitle,

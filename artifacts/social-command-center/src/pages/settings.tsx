@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { mockSettings } from "@/data/mockSettings";
+import { getSettings } from "@/lib/api";
 
 export default function Settings() {
   const { toast } = useToast();
   const [settings, setSettings] = useState(mockSettings);
+
+  useEffect(() => {
+    getSettings().then((api) => {
+      if (api !== null) {
+        setSettings((prev) => {
+          const merged = { ...prev };
+          for (const key of Object.keys(api) as Array<keyof typeof prev>) {
+            if (key in prev && typeof api[key] === "object" && api[key] !== null) {
+              (merged as Record<string, unknown>)[key] = {
+                ...(prev[key] as object),
+                ...(api[key] as object),
+              };
+            }
+          }
+          return merged;
+        });
+      }
+    });
+  }, []);
 
   const handleSave = () => {
     toast({
@@ -38,7 +58,7 @@ export default function Settings() {
           <TabsTrigger value="ai" className="justify-start px-4 py-2">AI Assistant</TabsTrigger>
           <TabsTrigger value="n8n" className="justify-start px-4 py-2">n8n Integration</TabsTrigger>
         </TabsList>
-        
+
         <div className="flex-1 overflow-y-auto">
           <TabsContent value="general" className="m-0 space-y-6">
             <Card>
@@ -72,7 +92,7 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="scheduling" className="m-0 space-y-6">
             <Card>
               <CardHeader>
@@ -93,7 +113,7 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="inbox" className="m-0 space-y-6">
             <Card>
               <CardHeader>

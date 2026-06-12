@@ -1,11 +1,62 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { mockAccounts } from "@/data/mockAccounts";
+import { listAccounts } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Check, X } from "lucide-react";
 
+type DisplayAccount = {
+  id: string;
+  platform: string;
+  accountName: string;
+  accountId: string;
+  connectionStatus: string;
+  lastSync: string | null;
+  postingCapability: boolean;
+  commentReadCapability: boolean;
+  commentReplyCapability: boolean;
+  moderationCapability: boolean;
+};
+
+const toDisplay = (): DisplayAccount[] =>
+  mockAccounts.map((a) => ({
+    id: a.id,
+    platform: a.platform,
+    accountName: a.accountName,
+    accountId: a.accountId,
+    connectionStatus: a.connectionStatus,
+    lastSync: a.lastSync ?? null,
+    postingCapability: a.postingCapability,
+    commentReadCapability: a.commentReadCapability,
+    commentReplyCapability: a.commentReplyCapability,
+    moderationCapability: a.moderationCapability,
+  }));
+
 export default function ConnectedAccounts() {
+  const [accounts, setAccounts] = useState<DisplayAccount[]>(toDisplay());
+
+  useEffect(() => {
+    listAccounts().then((api) => {
+      if (api !== null) {
+        setAccounts(
+          api.map((a) => ({
+            id: a.id,
+            platform: a.platform.toLowerCase(),
+            accountName: a.accountName,
+            accountId: a.accountId,
+            connectionStatus: a.connectionStatus,
+            lastSync: a.lastSync ?? null,
+            postingCapability: a.postingCapability,
+            commentReadCapability: a.commentReadCapability,
+            commentReplyCapability: a.commentReplyCapability,
+            moderationCapability: a.moderationCapability ?? false,
+          })),
+        );
+      }
+    });
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -17,7 +68,7 @@ export default function ConnectedAccounts() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockAccounts.map(account => (
+        {accounts.map(account => (
           <Card key={account.id} className="flex flex-col">
             <CardHeader className="pb-3 border-b">
               <div className="flex justify-between items-start">
@@ -29,7 +80,7 @@ export default function ConnectedAccounts() {
                     account.connectionStatus === "mock_mode" ? "bg-blue-100 text-blue-800 border border-blue-200" :
                     "bg-gray-100 text-gray-800 border border-gray-200"
                   }`}>
-                    {account.connectionStatus.replace('_', ' ')}
+                    {account.connectionStatus.replace(/_/g, ' ')}
                   </span>
                 </div>
               </div>

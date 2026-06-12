@@ -5,6 +5,7 @@ import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { logger } from "../utils/logger.js";
+import { requireInternalApiKey } from "../utils/auth.js";
 
 const router = Router();
 
@@ -151,21 +152,11 @@ router.get("/queue", async (_req: Request, res: Response) => {
   sendSuccess(res, posts);
 });
 
-// ─── POST /api/webhooks/n8n ───────────────────────────────────────────────────
-// Mounted at /api/scheduler for routing simplicity; real n8n prefix set in app.ts
-router.post("/webhooks/n8n", async (req: Request, res: Response) => {
-  const secret = req.headers["x-n8n-secret"];
-  if (
-    process.env.N8N_WEBHOOK_SECRET &&
-    secret !== process.env.N8N_WEBHOOK_SECRET
-  ) {
-    sendError(res, "UNAUTHORIZED", "Invalid N8N webhook secret", undefined, 401);
-    return;
-  }
-
+// ─── POST /api/scheduler/webhooks/n8n ─────────────────────────────────────────
+// Protected by the shared internal API key (x-internal-api-key header).
+router.post("/webhooks/n8n", requireInternalApiKey, async (req: Request, res: Response) => {
   const { action, postId } = req.body as { action?: string; postId?: string };
   logger.info({ action, postId }, "N8N webhook received");
-
   sendSuccess(res, { received: true, action, postId });
 });
 

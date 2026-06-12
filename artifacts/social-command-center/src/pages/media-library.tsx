@@ -1,26 +1,70 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
 import { mockMediaAssets } from "@/data/mockMedia";
+import { listMedia } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
 import { mockAnalyzeMedia } from "@/lib/mockActions";
+
+type DisplayAsset = {
+  id: string;
+  originalFileName: string;
+  originalFileType: "image" | "video";
+  originalSizeBytes: number;
+  originalWidth: number;
+  originalHeight: number;
+  uploadedAt: string;
+  processingStatus: string;
+  generatedVersions: Array<{ platform: string; processingStatus: string; qualityScore: string }>;
+};
+
+const toDisplay = (): DisplayAsset[] =>
+  mockMediaAssets.map((a) => ({
+    id: a.id,
+    originalFileName: a.originalFileName,
+    originalFileType: a.originalFileType,
+    originalSizeBytes: a.originalSizeBytes,
+    originalWidth: a.originalWidth,
+    originalHeight: a.originalHeight,
+    uploadedAt: a.uploadedAt,
+    processingStatus: a.processingStatus,
+    generatedVersions: a.generatedVersions,
+  }));
 
 export default function MediaLibrary() {
   const [filter, setFilter] = useState("All");
   const [isUploading, setIsUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [, setLocation] = useLocation();
+  const [assets, setAssets] = useState<DisplayAsset[]>(toDisplay());
+
+  useEffect(() => {
+    listMedia().then((api) => {
+      if (api !== null) {
+        setAssets(
+          api.map((a) => ({
+            id: a.id,
+            originalFileName: a.originalFileName,
+            originalFileType: a.originalFileType as "image" | "video",
+            originalSizeBytes: a.originalSizeBytes,
+            originalWidth: a.originalWidth ?? 0,
+            originalHeight: a.originalHeight ?? 0,
+            uploadedAt: a.createdAt,
+            processingStatus: (a.processingStatus ?? "pending").toLowerCase(),
+            generatedVersions: [],
+          })),
+        );
+      }
+    });
+  }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsUploading(true);
     try {
       await mockAnalyzeMedia(file);
-      // In a real app we'd add the asset to the list or go to optimizer.
-      // For mock, we can just redirect to the optimizer with a generic ID or stay here.
       setLocation("/media-optimizer");
     } finally {
       setIsUploading(false);
@@ -29,11 +73,11 @@ export default function MediaLibrary() {
   };
 
   const filters = [
-    "All", "Images", "Videos", "Needs Review", "Failed", 
+    "All", "Images", "Videos", "Needs Review", "Failed",
     "Ready for Facebook", "Ready for Instagram", "Ready for LinkedIn", "Ready for TikTok", "Ready for Website"
   ];
 
-  const filteredAssets = mockMediaAssets.filter(asset => {
+  const filteredAssets = assets.filter(asset => {
     if (filter === "All") return true;
     if (filter === "Images") return asset.originalFileType === "image";
     if (filter === "Videos") return asset.originalFileType === "video";
@@ -88,8 +132,8 @@ export default function MediaLibrary() {
             key={f}
             onClick={() => setFilter(f)}
             className={`px-3 py-1.5 text-sm rounded-full whitespace-nowrap border transition-colors ${
-              filter === f 
-                ? "bg-primary text-primary-foreground border-primary" 
+              filter === f
+                ? "bg-primary text-primary-foreground border-primary"
                 : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
             }`}
             data-testid={`filter-${f.replace(/\s+/g, '-').toLowerCase()}`}
@@ -102,7 +146,7 @@ export default function MediaLibrary() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAssets.map(asset => {
           const platforms = Array.from(new Set(asset.generatedVersions.filter(v => v.processingStatus === "complete").map(v => v.platform)));
-          
+
           let worstScore = "Excellent";
           for (const v of asset.generatedVersions) {
             if (v.qualityScore === "Poor") worstScore = "Poor";
@@ -144,7 +188,7 @@ export default function MediaLibrary() {
 
                 <div className="flex flex-wrap gap-1 mt-auto pt-2">
                   {platforms.map(p => (
-                    <PlatformBadge key={p} platform={p} showText={false} className="opacity-80" />
+                    <PlatformBadge key={p} platform={p as any} showText={false} className="opacity-80" />
                   ))}
                 </div>
 
