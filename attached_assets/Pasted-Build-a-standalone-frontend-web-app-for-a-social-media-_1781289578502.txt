@@ -1,0 +1,1143 @@
+Build a standalone frontend web app for a social media scheduling, publishing, and comment management system.
+
+App name:
+Social Command Center
+
+Purpose:
+Create a standalone admin app that will eventually connect by API to:
+- the company website
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+- n8n
+- local AI computer / private AI model
+
+This is a frontend-first build. Do not implement live backend integrations yet. Use mock data, local React state, and stubbed handlers. The app should be designed so backend/API integrations can be added in later phases.
+
+Important project clarification:
+- This is NOT being embedded inside the existing public website.
+- This should be a separate standalone app.
+- It may later connect to the website by API.
+- It may later send approved social posts to the website, blog, news feed, learning center, or project gallery.
+- It may later receive website leads/comments/form inquiries by API.
+- Do not modify any existing website routes, SEO pages, public navigation, schema, or marketing pages.
+- Build this as its own app/dashboard.
+
+Branding:
+- Keep the visual identity consistent with the existing TDS / marine manufacturing brand.
+- Use a clean, professional, premium marine-industry look.
+- Avoid generic SaaS styling if it conflicts with the existing brand.
+- Use refined cards, white/neutral backgrounds, strong spacing, navy/dark accents, gold or brand-accent highlights if used in the existing brand, clean tables, and professional form layouts.
+- The app should feel appropriate for a 40+ year teak decking / marine manufacturing company.
+- Use existing brand colors, typography, button style, border radius, shadows, hover states, and spacing if available in the project.
+- If existing components are available, reuse them.
+- If no component system exists, create a clean reusable component system.
+
+Core app modules:
+1. Dashboard
+2. Create Post / Edit Post
+3. Calendar
+4. Post Management
+5. Social Inbox / Comment Management
+6. Connected Accounts
+7. Publish Logs
+8. Comment Sync Logs
+9. Settings
+10. AI Assistant placeholders
+11. Website API placeholders
+
+Primary platforms:
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+
+Future connected systems:
+- Company website API
+- n8n scheduler
+- Local AI computer
+- Public media storage/CDN
+- Official social platform APIs
+
+Do not use the word “scraping” in the UI.
+Use:
+- Comment Sync
+- Social Inbox
+- Engagement Management
+- API-based comment management
+- Social account connection
+- Platform sync
+
+The future backend must use official APIs only.
+Do not design for:
+- browser scraping
+- password-based social login
+- unofficial social APIs
+- automated browser sessions
+- exposed access tokens in the frontend
+
+==================================================
+GLOBAL APP LAYOUT
+==================================================
+
+Create a standalone dashboard layout with:
+
+- Left sidebar navigation
+- Top header bar
+- Main content area
+- User/profile placeholder
+- Notifications placeholder
+- Global search placeholder
+- Responsive mobile navigation
+
+Sidebar navigation:
+- Dashboard
+- Create Post
+- Calendar
+- Posts
+- Social Inbox
+- Connected Accounts
+- Publish Logs
+- Comment Logs
+- AI Assistant
+- Website API
+- Settings
+
+Header:
+- App name: Social Command Center
+- Current section title
+- Quick action button: Create Post
+- Optional status indicator: API Mock Mode
+- User initials/avatar placeholder
+
+Responsive behavior:
+- Desktop: persistent sidebar
+- Tablet: collapsible sidebar
+- Mobile: drawer or top navigation menu
+
+==================================================
+1. DASHBOARD
+==================================================
+
+Create a dashboard home screen.
+
+Dashboard summary cards:
+- Drafts
+- Scheduled Posts
+- Published This Month
+- Failed Posts
+- New Comments
+- Unreplied Comments
+- Needs Follow-Up
+- Resolved Today
+
+Dashboard sections:
+- Upcoming scheduled posts
+- Recent publish activity
+- Engagement inbox preview
+- Connected accounts status
+- Failed actions requiring attention
+- Website API placeholder panel
+- AI Assistant placeholder panel
+
+Upcoming scheduled posts should show:
+- post title
+- platforms selected
+- scheduled date/time
+- status
+- media thumbnail
+- quick actions: preview, edit
+
+Recent publish activity should show:
+- platform
+- post title
+- timestamp
+- success/failure status
+- external post ID placeholder
+
+Engagement inbox preview should show:
+- newest comments
+- platform
+- commenter name
+- comment snippet
+- status
+- quick action: reply
+
+Connected account status panel:
+- Facebook Page
+- Instagram Business Account
+- LinkedIn Profile/Page
+- TikTok Account
+- Website API
+- n8n
+- Local AI computer
+
+Each should show:
+- connected / not connected / needs permission / mock mode
+- last sync placeholder
+- warning badge if failed
+
+==================================================
+2. CREATE / EDIT POST SCREEN
+==================================================
+
+Create a post composer screen.
+
+Fields:
+- Internal post title
+- Master caption
+- Media upload area
+- Platform selector
+- Platform-specific captions
+- Schedule date
+- Schedule time
+- Time zone display
+- Optional website distribution toggle
+- Save Draft button
+- Preview button
+- Schedule Post button
+- Publish Now button placeholder
+
+Media upload UI:
+- Drag-and-drop upload zone
+- Select file button
+- Selected image/video thumbnail
+- File name
+- File type
+- File size
+- Remove option
+- Frontend validation messages
+
+Media warnings:
+- Instagram/TikTok generally require media.
+- Video formats and size limits will be validated later by backend.
+- Public HTTPS media URL will be required later by backend.
+- Current UI uses mock upload only.
+
+Platform selector:
+Use checkbox cards or toggle cards for:
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+- Website
+
+Each platform card should show:
+- platform name
+- platform icon placeholder/badge
+- connection status placeholder
+- selected/unselected state
+- posting capability placeholder
+
+Website option:
+Add a future “Website” channel option so the same content can later be sent to:
+- website news
+- blog
+- project gallery
+- learning center
+- homepage announcement
+- case study draft
+
+Do not implement actual website API yet.
+
+Validation:
+- Title required.
+- At least one platform/channel required.
+- Master caption required unless every selected platform has a custom caption.
+- Schedule date/time required when scheduling.
+- Media required for Instagram and TikTok.
+- Show clear inline validation errors.
+- Prevent schedule if required fields are missing.
+
+==================================================
+3. PLATFORM CAPTION TABS
+==================================================
+
+Create tabs or accordion sections for:
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+- Website
+
+Each tab should include:
+- Caption textarea
+- Character count
+- Use master caption button
+- Generate with AI button disabled/stubbed
+- Hashtag helper placeholder
+- Tone hint
+- Platform-specific notes
+
+Tone hints:
+- Facebook: community / informative
+- Instagram: visual / hashtags
+- LinkedIn: professional / business
+- TikTok: short / casual
+- Website: polished / SEO-friendly / educational
+
+Website-specific fields:
+- Suggested page type
+- SEO title placeholder
+- Meta description placeholder
+- Slug placeholder
+- Excerpt placeholder
+- CTA placeholder
+
+Do not implement SEO publishing yet. Use mock/stub state only.
+
+==================================================
+4. PREVIEW PANEL
+==================================================
+
+Create a preview panel.
+
+Desktop:
+- Composer left
+- Preview right
+
+Mobile:
+- Preview stacked below composer
+
+Preview cards:
+- Facebook preview
+- Instagram preview
+- LinkedIn preview
+- TikTok preview
+- Website preview
+
+Each preview should visually approximate the platform format without copying the platform UI too heavily.
+
+Each preview should show:
+- account placeholder name
+- media preview
+- caption preview
+- selected scheduled time
+- status badge
+- platform badge
+
+Website preview should show:
+- content type
+- title
+- excerpt
+- media image
+- CTA
+- draft status
+
+==================================================
+5. POST MANAGEMENT
+==================================================
+
+Create a posts management screen.
+
+Tabs/filters:
+- All
+- Drafts
+- Scheduled
+- Publishing
+- Published
+- Failed
+- Archived
+
+Each post list item/card should show:
+- post title
+- selected platforms/channels
+- scheduled date/time
+- status
+- media thumbnail
+- last updated
+- created by placeholder
+- quick actions
+
+Actions:
+- Edit
+- Duplicate
+- Preview
+- Publish Now placeholder
+- Retry if failed
+- Archive/Delete
+
+Add filters:
+- platform
+- status
+- date range
+- created by
+- has media
+- failed only
+
+Use mock data.
+
+==================================================
+6. CALENDAR VIEW
+==================================================
+
+Create a calendar-style scheduling screen.
+
+Views:
+- Month view
+- Week view placeholder
+- List/agenda view
+- Mobile agenda fallback
+
+Scheduled posts should appear on publish dates.
+
+Each calendar item should show:
+- title
+- time
+- platform badges
+- status badge
+
+Clicking a post opens:
+- preview side panel
+- edit button
+- duplicate button
+
+Use mock scheduled post data.
+
+==================================================
+7. SOCIAL INBOX / COMMENT MANAGEMENT
+==================================================
+
+Create a Social Inbox module.
+
+Purpose:
+Allow an admin to view comments from connected social accounts and reply from inside this app in the future through official APIs.
+
+Route:
+- /social-inbox
+or follow the routing style used in the app.
+
+Layout:
+- Left column: filters and comment list
+- Right column: selected comment detail and reply composer
+- Mobile: stacked layout
+
+Filters:
+- Platform: All, Facebook, Instagram, LinkedIn, TikTok
+- Account
+- Original post
+- Status
+- Date range
+- Assigned user
+- Priority
+- Has not been replied to
+- Contains question
+- Contains negative sentiment
+- Contains sales opportunity
+- Contains support issue
+
+Comment list item should show:
+- platform badge
+- account name
+- commenter name
+- comment snippet
+- original post title/caption snippet
+- timestamp
+- status badge
+- priority badge
+- reply count
+- assigned user
+- media thumbnail if available
+
+Comment statuses:
+- new
+- replied
+- needs_follow_up
+- resolved
+- hidden
+- ignored
+- escalated
+- failed_reply
+
+Priorities:
+- low
+- normal
+- high
+- urgent
+- sales_opportunity
+
+Mock comment examples:
+- Facebook: “Do you install teak decks in Fort Lauderdale?”
+- Instagram: “How long does a teak deck last?”
+- LinkedIn: “Do you work with OEM boat builders?”
+- TikTok: “Can this be used instead of real teak?”
+- Instagram negative: “My old deck failed after two years. What makes yours different?”
+- Facebook support: “Can someone contact me about a quote?”
+
+==================================================
+8. COMMENT DETAIL PANEL
+==================================================
+
+When a comment is selected, show:
+
+- Platform
+- Connected account
+- Original post preview
+- Original post media thumbnail/video placeholder
+- Original post caption snippet
+- Commenter name
+- Commenter handle placeholder
+- Comment text
+- Timestamp
+- Thread/replies
+- Internal notes
+- Status selector
+- Assigned user selector
+- Priority selector
+
+Actions:
+- Reply
+- Save Draft Reply
+- Generate AI Reply
+- Mark Resolved
+- Mark Needs Follow-Up
+- Escalate
+- Hide Comment
+- Ignore
+- View on Platform
+- Refresh Thread
+
+Important:
+- Hide Comment should appear as a future capability for platforms that support moderation.
+- View on Platform should use a placeholder external URL.
+- Refresh Thread should use mock/stubbed async behavior.
+- Generate AI Reply should use mock suggestions only.
+
+==================================================
+9. REPLY COMPOSER
+==================================================
+
+Create a reply composer inside the comment detail panel.
+
+Fields:
+- Reply textarea
+- Character count
+- Tone selector
+- Suggested reply buttons
+- Send Reply button
+- Save Draft button
+- Clear button
+
+Tone selector:
+- Professional
+- Friendly
+- Helpful
+- Sales-oriented
+- Technical support
+
+Suggested reply buttons:
+- Thank you
+- Ask for contact info
+- Direct to website
+- Request photos/details
+- Escalate to sales
+
+Validation:
+- Reply cannot be empty.
+- Reply must have selected comment.
+- Reply must have selected account.
+- If comment status is hidden, ignored, or resolved, show warning before replying.
+- Show platform-specific warning placeholders.
+
+Use mock async send state:
+- sending
+- sent
+- failed
+
+Do not call live APIs yet.
+
+==================================================
+10. AI REPLY / CONTENT ASSISTANT
+==================================================
+
+Create frontend-only AI assistant placeholders.
+
+Areas:
+1. Caption generation in post composer
+2. Platform-specific caption rewriting
+3. Social Inbox reply suggestions
+4. Sentiment classification
+5. Sales opportunity detection
+6. Support issue detection
+7. Website content draft generation
+
+AI Assistant screen:
+- Prompt input
+- Select output type
+  - social caption
+  - Instagram caption
+  - LinkedIn post
+  - Facebook post
+  - TikTok caption
+  - comment reply
+  - website article idea
+  - FAQ answer
+- Mock generate button
+- Mock results panel
+- Save result as draft button placeholder
+
+Local AI computer future connection:
+Add UI card showing:
+- Local AI status: mock mode
+- Endpoint placeholder
+- Last health check placeholder
+- Model name placeholder
+- Connection settings placeholder
+
+Do not connect to live local AI yet.
+
+==================================================
+11. CONNECTED ACCOUNTS
+==================================================
+
+Create a Connected Accounts screen.
+
+Account cards:
+- Facebook Page
+- Instagram Business Account
+- LinkedIn Profile
+- LinkedIn Company Page
+- TikTok Account
+- Website API
+- n8n
+- Local AI Computer
+
+Each account card should include:
+- connection status
+- account name placeholder
+- account ID placeholder
+- last token check placeholder
+- last sync placeholder
+- connect button
+- disconnect button
+- reconnect button
+- permissions needed section
+- posting capability
+- comment reading capability
+- comment replying capability
+- moderation/hide capability
+- sync status
+
+Buttons should be stubbed.
+No live OAuth yet.
+
+Permission notes:
+
+Facebook:
+- Future backend should use official Meta Page APIs.
+- Needs Page access and approved permissions for publishing and engagement.
+
+Instagram:
+- Future backend should use Instagram Graph API.
+- Requires Instagram Business or Creator account connected to a Facebook Page.
+- Needs approved permissions for content publishing and comment replies.
+
+LinkedIn:
+- Future backend should use LinkedIn official APIs.
+- Organization posting/commenting may require company page admin permissions.
+
+TikTok:
+- Future backend support depends on TikTok app permissions and API approval.
+- Keep TikTok modular and feature-flagged.
+
+Website API:
+- Future backend should connect to the company website through secure API endpoints.
+- Use API key or OAuth-style internal token.
+- Website publishing should require approval.
+
+n8n:
+- n8n should trigger due posts and workflow automations.
+- Do not store social tokens in n8n.
+- n8n should call this app’s backend.
+
+Local AI:
+- Local AI should generate content and suggestions.
+- Do not expose the AI computer publicly without authentication.
+- Use VPN, Tailscale, Cloudflare Tunnel, or private API access later.
+
+==================================================
+12. PUBLISH LOGS
+==================================================
+
+Create Publish Logs screen.
+
+Show:
+- date/time
+- post title
+- platform/channel
+- action
+- status
+- external post ID placeholder
+- API response placeholder
+- error message
+- retry button
+- view details button
+
+Actions:
+- post_created
+- post_scheduled
+- publish_started
+- publish_success
+- publish_failed
+- retry_started
+- retry_success
+- retry_failed
+
+Use mock successful and failed examples.
+
+==================================================
+13. COMMENT SYNC LOGS
+==================================================
+
+Create Comment Logs screen.
+
+Show:
+- date/time
+- platform
+- account
+- action type
+- status
+- related post
+- related commenter
+- error message
+- API response placeholder
+- retry button if failed
+
+Action types:
+- comment_sync
+- thread_refresh
+- reply_sent
+- reply_failed
+- comment_hidden
+- status_updated
+- assignment_updated
+- note_added
+
+Use mock data.
+
+==================================================
+14. SETTINGS
+==================================================
+
+Create Settings screen with sections:
+
+General:
+- app name
+- default timezone
+- default landing page
+- notification email placeholder
+
+Scheduling:
+- default schedule interval
+- require approval before publishing
+- prevent duplicate posts
+- retry failed posts
+- max retry count
+
+Social Inbox:
+- auto-sync comments toggle
+- sync frequency placeholder
+- auto-mark resolved after reply
+- require approval before sending AI-generated replies
+- keyword alerts
+- negative sentiment alert
+- sales opportunity alert
+- default assignee
+
+Website API:
+- website API base URL placeholder
+- API key placeholder masked
+- allowed publishing targets
+- require approval before website publish
+
+AI:
+- local AI endpoint placeholder
+- model selector placeholder
+- require approval for AI-generated content
+- AI tone defaults
+
+n8n:
+- n8n webhook URL placeholder
+- internal API key placeholder masked
+- scheduler mode
+- last workflow check placeholder
+
+Security:
+- role-based access placeholder
+- audit logging toggle
+- token encryption placeholder
+- session timeout placeholder
+
+Do not implement actual saved settings yet.
+Use local state or mock data.
+
+==================================================
+15. WEBSITE API MODULE
+==================================================
+
+Create a Website API screen.
+
+Purpose:
+This app will later connect to the company website by API.
+
+Show cards for future website publishing destinations:
+- News / Announcements
+- Blog / Learning Center
+- Project Gallery
+- FAQ
+- Case Study
+- Homepage Feature
+- Product Page Update
+
+Each card should show:
+- enabled/disabled placeholder
+- last sync
+- draft count
+- publish approval required
+- API endpoint placeholder
+
+Add mock workflow:
+- Social post can be repurposed into website draft.
+- AI can turn a social caption into a website article draft.
+- Approved website draft can be sent to website API later.
+- Website leads/comments could be pulled into this app later.
+
+No live website API calls yet.
+
+==================================================
+16. MOCK DATA
+==================================================
+
+Create mock data files, such as:
+
+src/data/mockSocialPosts.ts
+src/data/mockSocialInbox.ts
+src/data/mockConnectedAccounts.ts
+src/data/mockLogs.ts
+src/data/mockSettings.ts
+
+Mock platforms:
+- Facebook
+- Instagram
+- LinkedIn
+- TikTok
+- Website
+
+Mock post statuses:
+- draft
+- scheduled
+- publishing
+- published
+- failed
+- archived
+
+Mock scheduled posts:
+- “Teak deck refit showcase”
+- “Composite decking install highlight”
+- “Maintenance tip: cleaning teak”
+- “Behind the scenes: production floor”
+- “SeaSole product preview”
+- “Project gallery update”
+
+Mock comments:
+- Facebook install location question
+- Instagram teak lifespan question
+- LinkedIn OEM builder question
+- TikTok synthetic teak question
+- Instagram negative review concern
+- Facebook quote request
+
+Mock accounts:
+- Facebook Page
+- Instagram Business
+- LinkedIn Company Page
+- LinkedIn Personal
+- TikTok
+- Website API
+- n8n
+- Local AI
+
+Mock logs:
+- successful publish
+- failed publish
+- successful comment sync
+- failed reply
+- AI suggestion generated
+- website draft created
+
+==================================================
+17. COMPONENTS TO CREATE
+==================================================
+
+Create reusable components:
+
+Layout:
+- AppShell
+- SidebarNav
+- TopHeader
+- PageHeader
+- SectionCard
+- SummaryCard
+- EmptyState
+- LoadingState
+- ErrorState
+
+Social publishing:
+- SocialDashboard
+- SocialPostComposer
+- PlatformSelector
+- PlatformCaptionTabs
+- MediaUploadCard
+- SocialPreviewPanel
+- SocialPreviewCard
+- ScheduledPostsList
+- SocialCalendarView
+- PostManagementTable
+- PostStatusBadge
+- PlatformBadge
+
+Social inbox:
+- SocialInboxPage
+- SocialInboxDashboardCard
+- CommentFilterPanel
+- CommentList
+- CommentListItem
+- CommentDetailPanel
+- OriginalPostPreview
+- CommentThread
+- ReplyComposer
+- AIReplySuggestionPanel
+- CommentStatusBadge
+- CommentPriorityBadge
+- CommentSyncLogsTable
+
+Accounts/settings:
+- ConnectedAccountsPanel
+- AccountCapabilityCard
+- PublishLogsTable
+- SettingsPanel
+- WebsiteApiPanel
+- AiAssistantPanel
+
+==================================================
+18. FRONTEND STATE AND STUBBED FUNCTIONS
+==================================================
+
+Use local React state for:
+- active navigation
+- post form fields
+- selected platforms
+- media mock upload
+- caption overrides
+- selected scheduled time
+- selected post
+- selected comment
+- filters
+- reply draft
+- comment statuses
+- mock logs
+- settings toggles
+
+Create mock async functions:
+- mockUploadMedia()
+- mockSchedulePost()
+- mockSaveDraft()
+- mockPublishNow()
+- mockRetryPost()
+- mockSyncComments()
+- mockSendReply()
+- mockHideComment()
+- mockUpdateCommentStatus()
+- mockGenerateCaption()
+- mockGenerateReply()
+- mockCreateWebsiteDraft()
+- mockCheckConnection()
+
+These should simulate loading and success/error states without live APIs.
+
+==================================================
+19. FUTURE BACKEND ENDPOINT NOTES
+==================================================
+
+Add TODO comments or README notes for future endpoints.
+
+Social publishing:
+GET /api/posts
+POST /api/posts
+GET /api/posts/:id
+PUT /api/posts/:id
+DELETE /api/posts/:id
+POST /api/posts/:id/schedule
+POST /api/posts/:id/publish
+POST /api/posts/:id/retry
+
+Due posts / n8n:
+GET /api/scheduled-posts/due?limit=10
+POST /api/webhooks/n8n/publish-due
+POST /api/scheduled-posts/:id/publish
+
+Social accounts:
+GET /api/accounts
+POST /api/accounts/:platform/connect
+POST /api/accounts/:id/disconnect
+POST /api/accounts/:id/refresh-token
+GET /api/accounts/:id/capabilities
+
+Social inbox:
+GET /api/social-inbox/comments
+GET /api/social-inbox/comments/:id
+POST /api/social-inbox/comments/:id/reply
+POST /api/social-inbox/comments/:id/status
+POST /api/social-inbox/comments/:id/hide
+POST /api/social-inbox/comments/:id/assign
+POST /api/social-inbox/comments/:id/note
+POST /api/social-inbox/sync
+GET /api/social-inbox/logs
+
+AI:
+POST /api/ai/generate-caption
+POST /api/ai/generate-reply
+POST /api/ai/analyze-comment
+POST /api/ai/create-website-draft
+
+Website:
+GET /api/website/status
+POST /api/website/drafts
+POST /api/website/publish
+GET /api/website/sync-logs
+
+Logs:
+GET /api/logs/publishing
+GET /api/logs/comments
+GET /api/logs/audit
+
+Settings:
+GET /api/settings
+PUT /api/settings
+
+==================================================
+20. FUTURE DATABASE NOTES
+==================================================
+
+Add TODO comments or README notes for future database tables.
+
+Tables:
+- users
+- roles
+- social_accounts
+- media_assets
+- scheduled_posts
+- scheduled_post_platforms
+- publish_logs
+- social_comments
+- social_comment_threads
+- social_comment_replies
+- social_inbox_assignments
+- social_inbox_notes
+- social_inbox_sync_logs
+- ai_generation_logs
+- website_drafts
+- website_api_logs
+- settings
+- audit_logs
+
+==================================================
+21. ACCESSIBILITY
+==================================================
+
+Requirements:
+- Every input must have a visible label or proper aria label.
+- Buttons must be keyboard accessible.
+- Tabs must be accessible.
+- Filters must be accessible.
+- Modal/dialog behavior must be accessible if used.
+- Do not rely on color alone for status.
+- Use semantic headings.
+- Media thumbnails must have alt text.
+- Focus states must be clear and consistent with the brand.
+
+==================================================
+22. RESPONSIVE REQUIREMENTS
+==================================================
+
+Desktop:
+- sidebar + header layout
+- two-column composer/preview
+- two-column social inbox
+- card grids for dashboard
+
+Tablet:
+- collapsible navigation
+- reduced columns where needed
+
+Mobile:
+- single-column layout
+- drawer navigation
+- preview below composer
+- inbox list before detail
+- calendar uses agenda/list view
+- large tap targets
+
+==================================================
+23. DO NOT
+==================================================
+
+Do not:
+- connect to live Facebook, Instagram, LinkedIn, TikTok APIs yet
+- implement real OAuth yet
+- store social tokens yet
+- expose access tokens in frontend
+- implement browser scraping
+- use social media passwords
+- use unofficial APIs
+- modify the existing public website
+- embed this inside the website
+- alter public SEO pages
+- build backend tables yet unless necessary for mock state
+- add unnecessary dependencies
+- break existing routes if using an existing codebase
+- create console errors
+- create TypeScript errors
+
+==================================================
+24. DELIVERABLES
+==================================================
+
+Deliver:
+- Standalone frontend app/dashboard
+- Brand-consistent UI
+- Responsive layout
+- Mock social scheduling workflow
+- Mock post composer
+- Mock platform previews
+- Mock calendar
+- Mock post management
+- Mock Social Inbox
+- Mock reply workflow
+- Mock AI suggestions
+- Mock connected accounts
+- Mock publish logs
+- Mock comment logs
+- Mock settings
+- Mock website API screen
+- Clear component structure
+- Clear mock data files
+- Stubbed functions ready for backend integration
+- README or implementation summary explaining:
+  - pages/routes created
+  - components created
+  - mock data files created
+  - stubbed functions created
+  - future backend endpoints needed
+  - future database tables needed
+  - what is intentionally not implemented yet
+
+Final quality requirements:
+- No TypeScript errors
+- No lint errors
+- No console errors
+- No broken navigation
+- No inaccessible form controls
+- Clean responsive behavior
+- Professional marine-industry brand feel
