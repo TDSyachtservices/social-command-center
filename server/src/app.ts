@@ -28,7 +28,19 @@ const allowedOrigins = (process.env.FRONTEND_URL ?? "")
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+      if (allowedOrigins.length === 0) {
+        if (process.env.NODE_ENV === "production") {
+          cb(new Error("CORS: FRONTEND_URL is not set in production"));
+        } else {
+          cb(null, true);
+        }
+        return;
+      }
+      if (allowedOrigins.includes(origin)) {
         cb(null, true);
       } else {
         cb(new Error(`CORS: origin '${origin}' not allowed`));

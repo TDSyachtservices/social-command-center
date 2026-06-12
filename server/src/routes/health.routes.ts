@@ -7,7 +7,7 @@ const router = Router();
 router.get("/", async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    sendSuccess(res, { status: "ok", db: "connected", timestamp: new Date().toISOString() });
+    sendSuccess(res, { status: "ok", db: "connected" });
   } catch {
     sendError(res, "DB_ERROR", "Database connection failed", undefined, 503);
   }

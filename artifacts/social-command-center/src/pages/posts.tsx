@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearch } from "wouter";
 import { mockPosts } from "@/data/mockPosts";
+import type { PostStatus } from "@/data/mockPosts";
+import { listPosts } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -9,6 +11,23 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+type DisplayPost = {
+  id: string;
+  title: string;
+  platforms: string[];
+  status: string;
+  scheduledAt: string | null;
+};
+
+const toDisplayPosts = (): DisplayPost[] =>
+  mockPosts.map((p) => ({
+    id: p.id,
+    title: p.title,
+    platforms: p.platforms,
+    status: p.status,
+    scheduledAt: p.scheduledAt ?? null,
+  }));
+
 export default function Posts() {
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -16,8 +35,22 @@ export default function Posts() {
 
   const [filter, setFilter] = useState(initialStatus);
   const [searchTerm, setSearchTerm] = useState("");
+  const [posts, setPosts] = useState<DisplayPost[]>(toDisplayPosts());
 
-  const filteredPosts = mockPosts.filter(p => {
+  useEffect(() => {
+    listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
+      const normalized: DisplayPost[] = apiPosts.map((p) => ({
+        id: p.id,
+        title: p.title,
+        platforms: p.platforms.map((pl) => pl.platform.toLowerCase()),
+        status: p.status.toLowerCase(),
+        scheduledAt: p.scheduledAt ?? null,
+      }));
+      if (normalized.length > 0) setPosts(normalized);
+    });
+  }, [filter]);
+
+  const filteredPosts = posts.filter(p => {
     const matchesStatus = filter === "all" || p.status === filter;
     const matchesSearch = !searchTerm || p.title.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesStatus && matchesSearch;
@@ -99,7 +132,7 @@ export default function Posts() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell><StatusBadge status={post.status} /></TableCell>
+                    <TableCell><StatusBadge status={post.status as PostStatus} /></TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {post.scheduledAt ? new Date(post.scheduledAt).toLocaleString() : "—"}
                     </TableCell>

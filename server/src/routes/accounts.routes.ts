@@ -100,6 +100,62 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   sendSuccess(res, { deleted: true });
 });
 
+// ─── POST /api/accounts/:id/connect-mock ───────────────────────────────────
+router.post("/:id/connect-mock", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const existing = await prisma.socialAccount.findUnique({ where: { id } });
+  if (!existing) throw notFound("Account", id);
+
+  const account = await prisma.socialAccount.update({
+    where: { id },
+    data: {
+      connectionStatus: "connected",
+      lastSync: new Date(),
+      postingCapability: true,
+      commentReadCapability: true,
+      commentReplyCapability: true,
+      tokenEncrypted: "MOCK_TOKEN",
+      tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  sendSuccess(res, { ...account, mock: true, note: "Mock OAuth connect — no real token" });
+});
+
+// ─── GET /api/accounts/:id/check ────────────────────────────────────────────
+router.get("/:id/check", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const account = await prisma.socialAccount.findUnique({ where: { id } });
+  if (!account) throw notFound("Account", id);
+
+  const isExpired = account.tokenExpiresAt ? account.tokenExpiresAt < new Date() : false;
+  sendSuccess(res, {
+    id: account.id,
+    platform: account.platform,
+    connectionStatus: isExpired ? "token_expired" : account.connectionStatus,
+    lastSync: account.lastSync,
+    tokenExpiresAt: account.tokenExpiresAt,
+    healthy: account.connectionStatus === "connected" && !isExpired,
+  });
+});
+
+// ─── GET /api/accounts/:id/capabilities ─────────────────────────────────────
+router.get("/:id/capabilities", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const account = await prisma.socialAccount.findUnique({ where: { id } });
+  if (!account) throw notFound("Account", id);
+
+  sendSuccess(res, {
+    id: account.id,
+    platform: account.platform,
+    posting: account.postingCapability,
+    commentRead: account.commentReadCapability,
+    commentReply: account.commentReplyCapability,
+    moderation: account.moderationCapability,
+    scopes: account.scopes,
+  });
+});
+
 // ─── POST /api/accounts/:id/disconnect ─────────────────────────────────────
 router.post("/:id/disconnect", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;

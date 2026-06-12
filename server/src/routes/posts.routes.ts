@@ -145,6 +145,67 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   sendSuccess(res, { deleted: true });
 });
 
+// ─── POST /api/posts/:id/schedule ────────────────────────────────────────────
+const scheduleSchema = z.object({
+  scheduledAt: z.string().datetime(),
+  platforms: z.array(z.string()).optional(),
+  accountIds: z.array(z.string()).optional(),
+});
+
+router.post(
+  "/:id/schedule",
+  validateBody(scheduleSchema),
+  async (req: Request<{ id: string }>, res: Response) => {
+    const { id } = req.params;
+    const body = req.body as z.infer<typeof scheduleSchema>;
+    const post = await prisma.scheduledPost.findUnique({ where: { id } });
+    if (!post) throw notFound("Post", id);
+
+    const updated = await prisma.scheduledPost.update({
+      where: { id },
+      data: {
+        status: "SCHEDULED",
+        scheduledAt: new Date(body.scheduledAt),
+      },
+      include: { platforms: true },
+    });
+    sendSuccess(res, updated);
+  },
+);
+
+// ─── POST /api/posts/:id/publish ──────────────────────────────────────────────
+router.post("/:id/publish", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const post = await prisma.scheduledPost.findUnique({
+    where: { id },
+    include: { platforms: true },
+  });
+  if (!post) throw notFound("Post", id);
+
+  if (!["DRAFT", "SCHEDULED", "FAILED"].includes(post.status)) {
+    sendError(res, "BAD_REQUEST", `Cannot publish post with status '${post.status}'`);
+    return;
+  }
+
+  const updated = await prisma.scheduledPost.update({
+    where: { id },
+    data: { status: "PUBLISHING" },
+    include: { platforms: true },
+  });
+
+  await prisma.publishLog.create({
+    data: {
+      scheduledPostId: id,
+      postTitle: post.title,
+      platform: post.platforms[0]?.platform ?? "FACEBOOK",
+      action: "publish_triggered",
+      status: "pending",
+    },
+  });
+
+  sendSuccess(res, { ...updated, mock: true, note: "Mock publish — no real API call" });
+});
+
 // ─── POST /api/posts/:id/retry ────────────────────────────────────────────────
 router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;

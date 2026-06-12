@@ -113,6 +113,96 @@ router.post(
   },
 );
 
+// ─── POST /api/ai/generate-reply ──────────────────────────────────────────────
+const generateReplySchema = z.object({
+  commentText: z.string().min(1).max(5000),
+  commenterName: z.string().max(200).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]).optional(),
+  tone: z.enum(["professional", "friendly", "empathetic", "apologetic"]).default("professional"),
+  additionalContext: z.string().max(1000).optional(),
+});
+
+router.post(
+  "/generate-reply",
+  validateBody(generateReplySchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof generateReplySchema>;
+
+    const mockReply =
+      `Thank you for your comment${body.commenterName ? `, ${body.commenterName}` : ""}! ` +
+      `We appreciate your feedback. Our team will get back to you shortly. ` +
+      `Feel free to reach out at sales@marinedeckingco.com for more information. ⚓`;
+
+    sendSuccess(res, { reply: mockReply, model: "mock", mock: true });
+  },
+);
+
+// ─── POST /api/ai/analyze-comment ─────────────────────────────────────────────
+const analyzeCommentSchema = z.object({
+  commentText: z.string().min(1).max(5000),
+  commenterName: z.string().max(200).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]).optional(),
+});
+
+router.post(
+  "/analyze-comment",
+  validateBody(analyzeCommentSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof analyzeCommentSchema>;
+    const text = body.commentText.toLowerCase();
+
+    const isSalesLead = text.includes("price") || text.includes("quote") || text.includes("buy") || text.includes("purchase") || text.includes("cost");
+    const isNegative = text.includes("bad") || text.includes("terrible") || text.includes("worst") || text.includes("awful");
+    const isQuestion = text.includes("?") || text.includes("how") || text.includes("when") || text.includes("where");
+
+    sendSuccess(res, {
+      sentiment: isNegative ? "negative" : isSalesLead ? "positive" : "neutral",
+      priority: isSalesLead ? "SALES_OPPORTUNITY" : isNegative ? "HIGH" : "NORMAL",
+      isSalesLead,
+      isQuestion,
+      suggestedAction: isSalesLead
+        ? "Follow up with pricing information"
+        : isNegative
+        ? "Acknowledge concern and offer resolution"
+        : "Reply with helpful information",
+      model: "mock",
+      mock: true,
+    });
+  },
+);
+
+// ─── POST /api/ai/create-website-draft ────────────────────────────────────────
+const createWebsiteDraftSchema = z.object({
+  postTitle: z.string().min(1).max(300),
+  masterCaption: z.string().max(5000).optional(),
+  seoKeywords: z.array(z.string()).max(10).optional(),
+  tone: z.enum(["professional", "casual", "educational", "promotional"]).default("professional"),
+});
+
+router.post(
+  "/create-website-draft",
+  validateBody(createWebsiteDraftSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof createWebsiteDraftSchema>;
+
+    const draft = {
+      title: body.postTitle,
+      metaTitle: `${body.postTitle} | Marine Decking Co`,
+      metaDescription: body.masterCaption
+        ? body.masterCaption.slice(0, 160)
+        : `${body.postTitle} — Marine Decking Co, premium marine deck solutions.`,
+      slug: body.postTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, ""),
+      bodyHtml: `<h1>${body.postTitle}</h1>\n<p>${body.masterCaption ?? "Content coming soon."}</p>`,
+      keywords: body.seoKeywords ?? [],
+    };
+
+    sendSuccess(res, { draft, model: "mock", mock: true });
+  },
+);
+
 // ─── GET /api/ai/status ────────────────────────────────────────────────────────
 router.get("/status", async (_req: Request, res: Response) => {
   const aiSetting = await prisma.setting.findUnique({ where: { key: "ai" } });

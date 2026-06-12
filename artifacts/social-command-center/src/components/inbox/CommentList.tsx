@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { mockComments, MockComment } from "@/data/mockComments";
+import { listComments } from "@/lib/api";
 import { CommentListItem } from "./CommentListItem";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,8 +16,33 @@ interface CommentListProps {
 export function CommentList({ selectedCommentId, onSelectComment, initialStatusFilter = "all" }: CommentListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
+  const [comments, setComments] = useState<MockComment[]>(mockComments);
 
-  const filteredComments = mockComments.filter(comment => {
+  useEffect(() => {
+    listComments({ limit: 100 }).then((apiComments) => {
+      if (apiComments.length > 0) {
+        const normalized: MockComment[] = apiComments.map((c) => ({
+          id: c.id,
+          platform: c.platform.toLowerCase() as MockComment["platform"],
+          accountName: c.accountName,
+          commenterName: c.commenterName,
+          commenterHandle: c.commenterHandle ?? "",
+          commentText: c.commentText,
+          originalPostTitle: c.originalPostTitle ?? "",
+          originalPostCaption: "",
+          timestamp: c.timestamp,
+          status: c.status.toLowerCase() as MockComment["status"],
+          priority: c.priority.toLowerCase() as MockComment["priority"],
+          replyCount: c.replyCount,
+          assignedUser: c.assignedUser,
+          mediaUrl: null,
+        }));
+        setComments(normalized);
+      }
+    });
+  }, []);
+
+  const filteredComments = comments.filter(comment => {
     const matchesSearch =
       comment.commentText.toLowerCase().includes(searchTerm.toLowerCase()) ||
       comment.commenterName.toLowerCase().includes(searchTerm.toLowerCase());

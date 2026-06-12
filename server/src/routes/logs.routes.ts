@@ -132,4 +132,44 @@ router.get(
   },
 );
 
+// ─── GET /api/logs/audit ──────────────────────────────────────────────────────
+router.get(
+  "/audit",
+  validateQuery(
+    z.object({
+      action: z.string().optional(),
+      resourceType: z.string().optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+  ),
+  async (req: Request, res: Response) => {
+    const q = (
+      req as Request & {
+        validatedQuery: { action?: string; resourceType?: string; page: number; limit: number };
+      }
+    ).validatedQuery;
+
+    const [total, logs] = await Promise.all([
+      prisma.auditLog.count({
+        where: {
+          ...(q.action ? { action: { contains: q.action } } : {}),
+          ...(q.resourceType ? { resourceType: q.resourceType } : {}),
+        },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          ...(q.action ? { action: { contains: q.action } } : {}),
+          ...(q.resourceType ? { resourceType: q.resourceType } : {}),
+        },
+        orderBy: { timestamp: "desc" },
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+      }),
+    ]);
+
+    sendSuccess(res, logs, { total, page: q.page, limit: q.limit });
+  },
+);
+
 export default router;
