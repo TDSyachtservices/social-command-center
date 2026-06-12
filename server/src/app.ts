@@ -19,6 +19,14 @@ import websiteRouter from "./routes/website.routes.js";
 
 const app = express();
 
+// ─── BigInt serialization ─────────────────────────────────────────────────────
+// Prisma maps BigInt columns (e.g. originalSizeBytes) to JS BigInt, which
+// JSON.stringify cannot serialize by default. This replacer converts them to
+// numbers so all routes work without per-handler casting.
+app.set("json replacer", (_key: string, value: unknown) =>
+  typeof value === "bigint" ? Number(value) : value,
+);
+
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.FRONTEND_URL ?? "")
   .split(",")
