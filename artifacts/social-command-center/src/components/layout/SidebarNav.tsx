@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
   Link2, ScrollText, MessageCircle, Bot, Globe, Settings,
   Image as ImageIcon, BarChart2, TrendingUp, Trophy,
-  FileBarChart,
+  FileBarChart, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ interface NavLink {
 interface NavSection {
   label: string | null;
   links: NavLink[];
+  collapsible?: boolean;
 }
 
 const sections: NavSection[] = [
@@ -52,6 +54,7 @@ const sections: NavSection[] = [
   },
   {
     label: "Manage",
+    collapsible: true,
     links: [
       { href: "/connected-accounts", label: "Connected Accounts", icon: Link2         },
       { href: "/website-api",        label: "Website API",        icon: Globe         },
@@ -68,6 +71,7 @@ interface SidebarNavContentProps {
 
 export function SidebarNavContent({ onNavigate }: SidebarNavContentProps) {
   const [location] = useLocation();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
@@ -75,45 +79,73 @@ export function SidebarNavContent({ onNavigate }: SidebarNavContentProps) {
     return location.startsWith(path);
   };
 
+  const toggleSection = (label: string) =>
+    setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
+
   return (
     <div className="flex-1 overflow-auto py-2">
       <nav className="px-2 text-sm font-medium space-y-1">
-        {sections.map((section, si) => (
-          <div key={si} className={si > 0 ? "pt-3" : ""}>
-            {section.label && (
-              <div className="px-3 pb-1 pt-1">
-                <span className="text-[10px] uppercase tracking-widest font-semibold text-sidebar-foreground/50 select-none">
-                  {section.label}
-                </span>
-              </div>
-            )}
-            <div className="space-y-0.5">
-              {section.links.map((link) => {
-                const active = isActive(link.href);
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={onNavigate}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      active ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
-                    )}
-                    data-testid={`nav-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
+        {sections.map((section, si) => {
+          const isCollapsible = Boolean(section.collapsible && section.label);
+          const isCollapsed = isCollapsible ? Boolean(collapsed[section.label as string]) : false;
+          return (
+            <div key={si} className={si > 0 ? "pt-3" : ""}>
+              {section.label &&
+                (isCollapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.label as string)}
+                    aria-expanded={!isCollapsed}
+                    className="w-full flex items-center justify-between px-3 pb-1 pt-1 group"
+                    data-testid={`nav-section-toggle-${section.label.toLowerCase().replace(/\s+/g, "-")}`}
                   >
-                    <link.icon
+                    <span className="text-[10px] uppercase tracking-widest font-semibold text-sidebar-foreground/50 select-none group-hover:text-sidebar-foreground/80 transition-colors">
+                      {section.label}
+                    </span>
+                    <ChevronDown
                       className={cn(
-                        "h-4 w-4 shrink-0",
-                        active ? "text-sidebar-primary" : "text-sidebar-foreground/60"
+                        "h-3.5 w-3.5 text-sidebar-foreground/40 transition-transform group-hover:text-sidebar-foreground/70",
+                        isCollapsed ? "-rotate-90" : "rotate-0"
                       )}
                     />
-                    {link.label}
-                  </Link>
-                );
-              })}
+                  </button>
+                ) : (
+                  <div className="px-3 pb-1 pt-1">
+                    <span className="text-[10px] uppercase tracking-widest font-semibold text-sidebar-foreground/50 select-none">
+                      {section.label}
+                    </span>
+                  </div>
+                ))}
+              {!isCollapsed && (
+                <div className="space-y-0.5">
+                  {section.links.map((link) => {
+                    const active = isActive(link.href);
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        onClick={onNavigate}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          active ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
+                        )}
+                        data-testid={`nav-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        <link.icon
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            active ? "text-sidebar-primary" : "text-sidebar-foreground/60"
+                          )}
+                        />
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
     </div>
   );
