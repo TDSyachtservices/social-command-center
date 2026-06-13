@@ -42,15 +42,37 @@ const toDisplay = (): DisplayAsset[] =>
     generatedVersions: a.generatedVersions,
   }));
 
+const STORAGE_KEY = "scc:media-library:v1";
+
+const loadPersisted = (): DisplayAsset[] | null => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as DisplayAsset[]) : null;
+  } catch {
+    return null;
+  }
+};
+
+const persist = (assets: DisplayAsset[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
+  } catch {
+    /* ignore storage errors (private mode, quota) */
+  }
+};
+
 export default function MediaLibrary() {
   const [filter, setFilter] = useState("All");
   const [isUploading, setIsUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [, setLocation] = useLocation();
-  const [assets, setAssets] = useState<DisplayAsset[]>(toDisplay());
+  const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? toDisplay());
   const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
 
   useEffect(() => {
+    if (loadPersisted() !== null) return; // keep the user's saved library (with their deletions/duplicates)
     listMedia().then((api) => {
       if (api !== null) {
         setAssets(
@@ -69,6 +91,10 @@ export default function MediaLibrary() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    persist(assets);
+  }, [assets]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
