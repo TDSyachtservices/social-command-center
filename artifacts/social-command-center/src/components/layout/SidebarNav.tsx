@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
   Link2, ScrollText, MessageCircle, Bot, Globe, Settings,
-  Image as ImageIcon, Layers, BarChart2, TrendingUp, Trophy,
+  Image as ImageIcon, BarChart2, TrendingUp, Trophy,
   FileBarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,6 @@ const sections: NavSection[] = [
     links: [
       { href: "/create-post",      label: "Create Post",      icon: PenSquare  },
       { href: "/media-library",    label: "Media Library",    icon: ImageIcon  },
-      { href: "/media-optimizer",  label: "Media Optimizer",  icon: Layers     },
       { href: "/calendar",         label: "Calendar",         icon: Calendar   },
       { href: "/posts",            label: "Posts",            icon: FileText   },
     ],
