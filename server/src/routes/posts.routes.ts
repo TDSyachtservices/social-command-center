@@ -4,6 +4,8 @@ import { prisma } from "../db/prisma.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
+import { publishPostById } from "../services/publisher.js";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -187,12 +189,7 @@ router.post("/:id/publish", async (req: Request<{ id: string }>, res: Response) 
     return;
   }
 
-  const updated = await prisma.scheduledPost.update({
-    where: { id },
-    data: { status: "PUBLISHING" },
-    include: { platforms: true },
-  });
-
+  await prisma.scheduledPost.update({ where: { id }, data: { status: "PUBLISHING" } });
   await prisma.publishLog.create({
     data: {
       scheduledPostId: id,
@@ -203,7 +200,19 @@ router.post("/:id/publish", async (req: Request<{ id: string }>, res: Response) 
     },
   });
 
-  sendSuccess(res, { ...updated, mock: true, note: "Mock publish — no real API call" });
+  sendSuccess(res, { postId: id, status: "publishing", note: "Publish in progress" });
+
+  setImmediate(async () => {
+    try {
+      const result = await publishPostById(id);
+      logger.info({ postId: id, ...result }, "Manual publish complete");
+    } catch (err) {
+      logger.error({ postId: id, err }, "Manual publish error");
+      await prisma.scheduledPost
+        .update({ where: { id }, data: { status: "FAILED" } })
+        .catch(() => {});
+    }
+  });
 });
 
 // ─── POST /api/posts/:id/retry ────────────────────────────────────────────────

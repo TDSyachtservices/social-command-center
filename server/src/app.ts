@@ -16,6 +16,7 @@ import logsRouter from "./routes/logs.routes.js";
 import settingsRouter from "./routes/settings.routes.js";
 import aiRouter from "./routes/ai.routes.js";
 import websiteRouter from "./routes/website.routes.js";
+import authRouter from "./routes/auth.routes.js";
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use("/api/logs", logsRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/website", websiteRouter);
+app.use("/api/auth", authRouter);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
