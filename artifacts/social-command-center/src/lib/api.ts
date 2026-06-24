@@ -394,6 +394,7 @@ export interface ApiMediaVersion {
   storageKey: string | null;
   processingStatus: string;
   cropMode: string;
+  focalPointJson: unknown;
   qualityScore: number | null;
   qualityScoreLabel: string | null;
   qualityScoreReason: string | null;
@@ -435,6 +436,20 @@ export async function getMediaAsset(id: string): Promise<ApiMediaAsset | null> {
 export async function getMediaVersions(id: string): Promise<unknown[] | null> {
   const result = await apiFetch<unknown[]>(`/api/media/${id}/versions`);
   return result.ok ? result.data : null;
+}
+
+export async function patchFocalPoint(
+  assetId: string,
+  versionId: string,
+  x: number,
+  y: number,
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/media/${assetId}/version/${versionId}/focal-point`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ x, y }),
+  });
+  return result.ok;
 }
 
 export async function processMedia(assetId: string): Promise<boolean> {
