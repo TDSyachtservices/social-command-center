@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "wouter";
-import { getMediaAsset, patchFocalPoint } from "@/lib/api";
+import { getMediaAsset, patchFocalPoint, uploadFile } from "@/lib/api";
 import type { ApiMediaVersion } from "@/lib/api";
 import { ALL_PRESETS } from "@/lib/mediaPresets";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import {
   Download,
   ArrowLeft,
   Move,
+  Loader2,
+  Wand2,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -307,6 +309,23 @@ function CropEditor({ asset, version, onClose, onSaved }: CropEditorProps) {
   );
 }
 
+/** Derive a MIME type from the file's extension, fallback to a safe default. */
+function getMimeType(fileName: string, fileType: "image" | "video"): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    avi: "video/x-msvideo",
+    mkv: "video/x-matroska",
+  };
+  return map[ext] ?? (fileType === "video" ? "video/mp4" : "image/jpeg");
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function MediaOptimizer() {
   const { assetId } = useParams();
@@ -316,6 +335,8 @@ export default function MediaOptimizer() {
   const [displayedVersions, setDisplayedVersions] = useState<ApiMediaVersion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingVersion, setEditingVersion] = useState<ApiMediaVersion | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
 
   useEffect(() => {
     if (!assetId) return;
@@ -354,6 +375,90 @@ export default function MediaOptimizer() {
     },
     [],
   );
+
+  /**
+   * Generate platform versions by sending the image from localStorage (blob URL)
+   * to Railway's ImageMagick pipeline. No need to re-open a file picker.
+   */
+  const handleProcessImage = useCallback(async () => {
+    if (!asset || isProcessing) return;
+
+    const blobUrl = asset.previewUrl;
+    if (!blobUrl) {
+      toast({
+        title: "Image not available",
+        description: "The original file is no longer cached. Please re-add it from the Media Library.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingStep("Reading image…");
+    try {
+      // Fetch the blob URL to get raw bytes (works as long as it's still in memory).
+      let response: Response;
+      try {
+        response = await fetch(blobUrl);
+        if (!response.ok) throw new Error("blob fetch failed");
+      } catch {
+        toast({
+          title: "Image expired from memory",
+          description: "Please re-add the photo from the Media Library — the browser cleared its temporary cache.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const blob = await response.blob();
+      const mimeType = getMimeType(asset.originalFileName, asset.originalFileType);
+      const file = new File([blob], asset.originalFileName, { type: mimeType });
+
+      setProcessingStep("Generating platform versions…");
+      const result = await uploadFile(asset.id, file);
+
+      if (!result) {
+        toast({
+          title: "Processing failed",
+          description: "Could not reach the server. Check your connection and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Convert the upload result into ApiMediaVersion shape.
+      const newVersions: ApiMediaVersion[] = result.versions.map((v) => ({
+        id: v.id,
+        platform: v.platform,
+        placement: v.placement,
+        width: v.width,
+        height: v.height,
+        aspectRatio: "",
+        format: "jpeg",
+        mimeType: "image/jpeg",
+        publicUrl: v.url,
+        storageKey: null,
+        processingStatus: "READY",
+        cropMode: "fill",
+        focalPointJson: null,
+        qualityScore: v.qualityScore,
+        qualityScoreLabel: v.qualityScoreLabel,
+        qualityScoreReason: null,
+        validationStatus: "READY",
+      }));
+
+      setAsset((prev) => prev ? { ...prev, allVersions: newVersions, processingStatus: "READY" } : prev);
+      setDisplayedVersions(newVersions);
+
+      toast({
+        title: `${newVersions.length} versions generated`,
+        description: "All platform sizes are ready — click Edit Crop to adjust any of them.",
+      });
+    } finally {
+      setIsProcessing(false);
+      setProcessingStep("");
+    }
+  }, [asset, isProcessing, toast]);
 
   if (!assetId || !asset) {
     return (
@@ -634,18 +739,48 @@ export default function MediaOptimizer() {
                 })}
 
                 {displayedVersions.length === 0 && (
-                  <div className="col-span-full p-10 text-center text-muted-foreground border-2 border-dashed rounded-lg space-y-3">
-                    <Crop className="w-10 h-10 mx-auto opacity-30" />
-                    <p className="font-medium">No versions yet</p>
-                    <p className="text-sm">
-                      {asset.allVersions.length === 0
-                        ? "Upload this asset from the Media Library to generate platform-specific versions."
-                        : "Select platforms on the left and click Show Versions."}
-                    </p>
-                    {asset.allVersions.length === 0 && (
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/media-library">Go to Media Library</Link>
-                      </Button>
+                  <div className="col-span-full p-10 text-center border-2 border-dashed rounded-lg space-y-4">
+                    {asset.allVersions.length === 0 ? (
+                      // No server versions exist — offer to generate them inline.
+                      isProcessing ? (
+                        <div className="space-y-3">
+                          <Loader2 className="w-10 h-10 mx-auto animate-spin text-primary" />
+                          <p className="font-medium text-foreground">{processingStep}</p>
+                          <p className="text-sm text-muted-foreground">
+                            ImageMagick is resizing your image for every platform. This takes about 10–20 seconds.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="mx-auto w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center">
+                            <Wand2 className="w-7 h-7 text-primary" />
+                          </div>
+                          <p className="font-semibold text-foreground text-base">Ready to generate platform versions</p>
+                          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                            Your image will be automatically cropped and resized for Facebook, Instagram, LinkedIn, TikTok, and more.
+                          </p>
+                          <Button
+                            onClick={handleProcessImage}
+                            className="gap-2"
+                            data-testid="btn-generate-versions"
+                          >
+                            <Wand2 className="w-4 h-4" />
+                            Generate All Platform Versions
+                          </Button>
+                          {!asset.previewUrl && (
+                            <p className="text-xs text-muted-foreground pt-1">
+                              Image not in memory —{" "}
+                              <Link href="/media-library" className="underline">re-add it from the Media Library</Link>
+                            </p>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      // Versions exist but are filtered — just nudge them.
+                      <div className="space-y-2 text-muted-foreground">
+                        <Crop className="w-8 h-8 mx-auto opacity-30" />
+                        <p className="font-medium">Select platforms on the left and click Show Versions</p>
+                      </div>
                     )}
                   </div>
                 )}
