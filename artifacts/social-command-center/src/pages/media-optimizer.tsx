@@ -1,27 +1,70 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
-import { mockMediaAssets } from "@/data/mockMedia";
+import { getMediaAsset } from "@/lib/api";
 import { ALL_PRESETS } from "@/lib/mediaPresets";
 import { Button } from "@/components/ui/button";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { mockGenerateMediaVersions, mockRegenerateVersion, mockApplyManualCrop } from "@/lib/mockActions";
-import { Image as ImageIcon, Film, Crop, AlertTriangle, XCircle, Settings, UploadCloud } from "lucide-react";
+import { Image as ImageIcon, Film, Crop, AlertTriangle, XCircle, UploadCloud } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
+type GeneratedVersion = {
+  id: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+  aspectRatio: string;
+  format: string;
+  cropMode: string;
+  focalPoint: { x: number; y: number };
+  processingStatus: string;
+  qualityScore: string;
+  safeZoneWarnings: string[];
+  validationErrors: string[];
+  validationWarnings: string[];
+};
+
+type OptimizerAsset = {
+  id: string;
+  originalFileName: string;
+  originalFileType: "image" | "video";
+  originalSizeBytes: number;
+  originalWidth: number;
+  originalHeight: number;
+  originalDuration?: number | null;
+  processingStatus: string;
+  generatedVersions: GeneratedVersion[];
+};
+
 export default function MediaOptimizer() {
   const { assetId } = useParams();
   const { toast } = useToast();
-  const [asset, setAsset] = useState(mockMediaAssets.find(a => a.id === assetId) || null);
-  
+  const [asset, setAsset] = useState<OptimizerAsset | null>(null);
   const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeCropId, setActiveCropId] = useState<string | null>(null);
 
   useEffect(() => {
-    setAsset(mockMediaAssets.find(a => a.id === assetId) || null);
+    if (!assetId) return;
+    setAsset(null);
+    getMediaAsset(assetId).then((api) => {
+      if (api !== null) {
+        setAsset({
+          id: api.id,
+          originalFileName: api.originalFileName,
+          originalFileType: (api.originalFileType === "video" ? "video" : "image") as "image" | "video",
+          originalSizeBytes: api.originalSizeBytes,
+          originalWidth: api.originalWidth ?? 0,
+          originalHeight: api.originalHeight ?? 0,
+          processingStatus: api.processingStatus,
+          generatedVersions: [],
+        });
+      }
+    });
   }, [assetId]);
 
   if (!assetId || !asset) {
@@ -54,7 +97,6 @@ export default function MediaOptimizer() {
   };
 
   const handleRegenerate = async (versionId: string) => {
-    // mock regeneration
     const v = asset.generatedVersions.find(ver => ver.id === versionId);
     if (!v) return;
     await mockRegenerateVersion(versionId, v.cropMode, v.focalPoint);

@@ -6,12 +6,20 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { mockSettings } from "@/data/mockSettings";
 import { getSettings } from "@/lib/api";
+
+const defaultSettings = {
+  general: { timezone: "America/New_York", dateFormat: "MM/DD/YYYY", timeFormat: "12h" },
+  scheduling: { defaultPostTime: "09:00", autoRetryFailed: false, retryAttempts: 3 },
+  socialInbox: { autoAssignComments: false, profanityFilter: false, autoHideProfanity: false },
+  websiteApi: { endpointUrl: "", requireApproval: true },
+  ai: { model: "llama3-8b", endpoint: "", temperature: 0.7, brandVoice: "" },
+  n8n: { webhookUrl: "", enabled: false },
+};
 
 export default function Settings() {
   const { toast } = useToast();
-  const [settings, setSettings] = useState(mockSettings);
+  const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
     getSettings().then((api) => {

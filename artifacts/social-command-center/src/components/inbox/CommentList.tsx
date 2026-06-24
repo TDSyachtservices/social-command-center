@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { mockComments, MockComment } from "@/data/mockComments";
+import { MockComment } from "@/data/mockComments";
 import { listComments } from "@/lib/api";
 import { CommentListItem } from "./CommentListItem";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ interface CommentListProps {
 export function CommentList({ selectedCommentId, onSelectComment, initialStatusFilter = "all" }: CommentListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
-  const [comments, setComments] = useState<MockComment[]>(mockComments);
+  const [comments, setComments] = useState<MockComment[]>([]);
 
   useEffect(() => {
     listComments({ limit: 100 }).then((apiComments) => {

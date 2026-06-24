@@ -48,7 +48,6 @@ export function TopHeader() {
       <div className="w-full flex justify-between items-center">
         <h1 className="text-xl font-semibold tracking-tight">{getPageTitle()}</h1>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase font-bold tracking-wider bg-secondary text-secondary-foreground px-2 py-1 rounded border hidden sm:inline-block">API Mock Mode</span>
           <Button size="sm" onClick={() => setLocation("/create-post")} className="hidden sm:flex">
             <PenSquare className="h-4 w-4 mr-2" /> Create Post
           </Button>

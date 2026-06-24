@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { mockPosts } from "@/data/mockPosts";
 import { listPosts } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,18 +6,13 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-reac
 
 type CalPost = { id: string; title: string; scheduledAt: string };
 
-const toCalPosts = (): CalPost[] =>
-  mockPosts
-    .filter((p) => p.status === "scheduled" && p.scheduledAt)
-    .map((p) => ({ id: p.id, title: p.title, scheduledAt: p.scheduledAt! }));
-
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAY_NAMES_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [scheduledPosts, setScheduledPosts] = useState<CalPost[]>(toCalPosts());
+  const [scheduledPosts, setScheduledPosts] = useState<CalPost[]>([]);
 
   useEffect(() => {
     listPosts({ status: "SCHEDULED" }).then((api) => {

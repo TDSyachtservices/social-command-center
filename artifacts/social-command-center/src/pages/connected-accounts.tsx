@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { mockAccounts } from "@/data/mockAccounts";
 import { listAccounts } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,20 +18,6 @@ type DisplayAccount = {
   moderationCapability: boolean;
 };
 
-const toDisplay = (): DisplayAccount[] =>
-  mockAccounts.map((a) => ({
-    id: a.id,
-    platform: a.platform,
-    accountName: a.accountName,
-    accountId: a.accountId,
-    connectionStatus: a.connectionStatus,
-    lastSync: a.lastSync ?? null,
-    postingCapability: a.postingCapability,
-    commentReadCapability: a.commentReadCapability,
-    commentReplyCapability: a.commentReplyCapability,
-    moderationCapability: a.moderationCapability,
-  }));
-
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 function getCallbackBanner(): { type: "success" | "error"; message: string } | null {
@@ -49,7 +34,7 @@ function getCallbackBanner(): { type: "success" | "error"; message: string } | n
 }
 
 export default function ConnectedAccounts() {
-  const [accounts, setAccounts] = useState<DisplayAccount[]>(toDisplay());
+  const [accounts, setAccounts] = useState<DisplayAccount[]>([]);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const apiConfigured = Boolean(API_BASE);
 

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
-import { mockPosts } from "@/data/mockPosts";
 import type { PostStatus } from "@/data/mockPosts";
 import { listPosts } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,15 +18,6 @@ type DisplayPost = {
   scheduledAt: string | null;
 };
 
-const toDisplayPosts = (): DisplayPost[] =>
-  mockPosts.map((p) => ({
-    id: p.id,
-    title: p.title,
-    platforms: p.platforms,
-    status: p.status,
-    scheduledAt: p.scheduledAt ?? null,
-  }));
-
 export default function Posts() {
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -36,7 +26,7 @@ export default function Posts() {
 
   const [filter, setFilter] = useState(initialStatus);
   const [searchTerm, setSearchTerm] = useState("");
-  const [posts, setPosts] = useState<DisplayPost[]>(toDisplayPosts());
+  const [posts, setPosts] = useState<DisplayPost[]>([]);
 
   useEffect(() => {
     listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {

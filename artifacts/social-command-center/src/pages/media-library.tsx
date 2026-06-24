@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
-import { mockMediaAssets } from "@/data/mockMedia";
 import { listMedia } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
@@ -29,19 +28,6 @@ type DisplayAsset = {
   generatedVersions: Array<{ platform: string; processingStatus: string; qualityScore: string }>;
 };
 
-const toDisplay = (): DisplayAsset[] =>
-  mockMediaAssets.map((a) => ({
-    id: a.id,
-    originalFileName: a.originalFileName,
-    originalFileType: a.originalFileType,
-    originalSizeBytes: a.originalSizeBytes,
-    originalWidth: a.originalWidth,
-    originalHeight: a.originalHeight,
-    uploadedAt: a.uploadedAt,
-    processingStatus: a.processingStatus,
-    generatedVersions: a.generatedVersions,
-  }));
-
 const STORAGE_KEY = "scc:media-library:v1";
 
 const loadPersisted = (): DisplayAsset[] | null => {
@@ -68,7 +54,7 @@ export default function MediaLibrary() {
   const [isUploading, setIsUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [, setLocation] = useLocation();
-  const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? toDisplay());
+  const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? []);
   const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
 
   useEffect(() => {

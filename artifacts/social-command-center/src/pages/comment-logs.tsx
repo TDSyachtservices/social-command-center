@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { mockCommentLogs } from "@/data/mockLogs";
 import { listCommentLogs } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,21 +17,8 @@ type DisplayLog = {
   errorMessage: string | null;
 };
 
-const toDisplay = (): DisplayLog[] =>
-  mockCommentLogs.map((l) => ({
-    id: l.id,
-    timestamp: l.timestamp,
-    platform: l.platform,
-    account: l.account,
-    actionType: l.actionType,
-    status: l.status,
-    relatedPost: l.relatedPost ?? null,
-    relatedCommenter: l.relatedCommenter ?? null,
-    errorMessage: l.errorMessage ?? null,
-  }));
-
 export default function CommentLogs() {
-  const [logs, setLogs] = useState<DisplayLog[]>(toDisplay());
+  const [logs, setLogs] = useState<DisplayLog[]>([]);
 
   useEffect(() => {
     listCommentLogs().then((api) => {

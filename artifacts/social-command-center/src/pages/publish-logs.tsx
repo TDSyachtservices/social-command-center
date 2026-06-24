@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { mockPublishLogs } from "@/data/mockLogs";
 import { listPublishLogs } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,19 +15,8 @@ type DisplayLog = {
   errorMessage: string | null;
 };
 
-const toDisplay = (): DisplayLog[] =>
-  mockPublishLogs.map((l) => ({
-    id: l.id,
-    timestamp: l.timestamp,
-    postTitle: l.postTitle,
-    platform: l.platform,
-    action: l.action,
-    status: l.status,
-    errorMessage: l.errorMessage ?? null,
-  }));
-
 export default function PublishLogs() {
-  const [logs, setLogs] = useState<DisplayLog[]>(toDisplay());
+  const [logs, setLogs] = useState<DisplayLog[]>([]);
 
   useEffect(() => {
     listPublishLogs().then((api) => {

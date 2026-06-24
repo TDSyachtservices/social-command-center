@@ -1,12 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Link } from "wouter";
-import { mockPosts } from "@/data/mockPosts";
 import type { PostStatus } from "@/data/mockPosts";
-import { mockComments } from "@/data/mockComments";
 import type { CommentStatus } from "@/data/mockComments";
-import { mockAccounts } from "@/data/mockAccounts";
-import { mockPublishLogs } from "@/data/mockLogs";
 import { listPosts, listComments, listAccounts, listPublishLogs } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -34,18 +30,10 @@ const cardStyles = [
 export default function Dashboard() {
   const [, setLocation] = useLocation();
 
-  const [posts, setPosts] = useState<DashPost[]>(
-    mockPosts.map(p => ({ id: p.id, title: p.title, status: p.status, scheduledAt: p.scheduledAt, platforms: p.platforms }))
-  );
-  const [comments, setComments] = useState<DashComment[]>(
-    mockComments.map(c => ({ id: c.id, platform: c.platform, commenterName: c.commenterName, commentText: c.commentText, status: c.status }))
-  );
-  const [accounts, setAccounts] = useState<DashAccount[]>(
-    mockAccounts.map(a => ({ id: a.id, accountName: a.accountName, connectionStatus: a.connectionStatus }))
-  );
-  const [logs, setLogs] = useState<DashLog[]>(
-    mockPublishLogs.map(l => ({ id: l.id, postTitle: l.postTitle, action: l.action, status: l.status, timestamp: l.timestamp }))
-  );
+  const [posts, setPosts] = useState<DashPost[]>([]);
+  const [comments, setComments] = useState<DashComment[]>([]);
+  const [accounts, setAccounts] = useState<DashAccount[]>([]);
+  const [logs, setLogs] = useState<DashLog[]>([]);
 
   useEffect(() => {
     listPosts({ limit: 100 }).then((apiPosts) => {
