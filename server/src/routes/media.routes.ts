@@ -7,6 +7,7 @@ import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { processImage, IMAGE_PLATFORM_SPECS, scoreQuality } from "../services/media-processor.js";
+import { scoreVersionWithAi } from "../services/ai-quality-scorer.js";
 
 const router = Router();
 
@@ -199,11 +200,27 @@ router.post(
             ? `${publicBase}/api/uploads/${id}/${fileName}`
             : `/api/uploads/${id}/${fileName}`;
 
-          const { score, label } = scoreQuality(
-            asset.originalWidth ?? 0,
-            asset.originalHeight ?? 0,
-            v.spec,
+          // Resolution heuristic used as fallback if AI is unavailable.
+          void scoreQuality(asset.originalWidth ?? 0, asset.originalHeight ?? 0, v.spec);
+
+          const ai = await scoreVersionWithAi(
+            v.outputPath,
+            v.spec.platform,
+            v.spec.placement,
+            v.spec.width,
+            v.spec.height,
           );
+
+          // AI label takes priority over the resolution heuristic.
+          const finalScore = ai.score;
+          const finalLabel = ai.label;
+          const finalReason = ai.reason;
+
+          // If AI says it's worse than the heuristic, flag for review.
+          const validationStatus =
+            finalLabel === "Poor" || finalLabel === "Needs Review"
+              ? "NEEDS_REVIEW"
+              : "READY";
 
           return prisma.mediaVersion.create({
             data: {
@@ -219,9 +236,10 @@ router.post(
               storageKey: `uploads/${id}/${fileName}`,
               publicUrl: vUrl,
               processingStatus: "READY",
-              qualityScore: score,
-              qualityScoreLabel: label,
-              validationStatus: "READY",
+              qualityScore: finalScore,
+              qualityScoreLabel: finalLabel,
+              qualityScoreReason: finalReason,
+              validationStatus: validationStatus as never,
             },
           });
         }),
@@ -244,6 +262,7 @@ router.post(
           url: v.publicUrl,
           qualityScore: v.qualityScore,
           qualityScoreLabel: v.qualityScoreLabel,
+          qualityScoreReason: v.qualityScoreReason,
         })),
       });
     } catch (err) {
@@ -302,6 +321,69 @@ router.patch(
     sendSuccess(res, updated);
   },
 );
+
+// ─── POST /api/media/:id/rescore ──────────────────────────────────────────────
+// Re-run AI quality scoring on all existing versions for this asset.
+// Useful after a Railway redeploy provisions the OpenAI integration.
+router.post("/:id/rescore", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const asset = await prisma.mediaAsset.findUnique({
+    where: { id },
+    include: { versions: true },
+  });
+  if (!asset) throw notFound("MediaAsset", id);
+  if (asset.versions.length === 0) {
+    sendError(res, "BAD_REQUEST", "No versions to score — upload the file first.");
+    return;
+  }
+
+  const updated = await Promise.all(
+    asset.versions.map(async (v) => {
+      const storagePath = v.storageKey
+        ? path.join(process.cwd(), v.storageKey)
+        : null;
+
+      if (!storagePath || !fs.existsSync(storagePath)) {
+        return v; // file not on disk (remote-only deploy), skip
+      }
+
+      const ai = await scoreVersionWithAi(
+        storagePath,
+        v.platform,
+        v.placement,
+        v.width,
+        v.height,
+      );
+
+      const validationStatus =
+        ai.label === "Poor" || ai.label === "Needs Review"
+          ? "NEEDS_REVIEW"
+          : "READY";
+
+      return prisma.mediaVersion.update({
+        where: { id: v.id },
+        data: {
+          qualityScore: ai.score,
+          qualityScoreLabel: ai.label,
+          qualityScoreReason: ai.reason,
+          validationStatus: validationStatus as never,
+        },
+      });
+    }),
+  );
+
+  sendSuccess(res, {
+    assetId: id,
+    scored: updated.length,
+    versions: updated.map((v) => ({
+      id: v.id,
+      platform: v.platform,
+      placement: v.placement,
+      qualityScoreLabel: v.qualityScoreLabel,
+      qualityScoreReason: v.qualityScoreReason,
+    })),
+  });
+});
 
 // ─── DELETE /api/media/:id ────────────────────────────────────────────────────
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {

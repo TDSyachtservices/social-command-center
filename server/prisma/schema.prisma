@@ -152,6 +152,7 @@ model MediaVersion {
   safeZoneWarningsJson  Json?
   qualityScore          Float?
   qualityScoreLabel     String?
+  qualityScoreReason    String?
   validationStatus      ValidationStatus @default(NEEDS_REVIEW)
   validationErrorsJson  Json?
   validationWarningsJson Json?

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
-import { getMediaAsset } from "@/lib/api";
+import { getMediaAsset, rescoreMedia } from "@/lib/api";
 import type { ApiMediaVersion } from "@/lib/api";
 import { ALL_PRESETS } from "@/lib/mediaPresets";
 import { Button } from "@/components/ui/button";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
-import { Image as ImageIcon, Film, Crop, AlertTriangle, XCircle, UploadCloud, CheckCircle2, Download } from "lucide-react";
+import { Image as ImageIcon, Film, Crop, UploadCloud, CheckCircle2, Download, Sparkles, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +44,7 @@ export default function MediaOptimizer() {
   const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
   const [displayedVersions, setDisplayedVersions] = useState<ApiMediaVersion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRescoring, setIsRescoring] = useState(false);
   const [activeCropId, setActiveCropId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +103,36 @@ export default function MediaOptimizer() {
       (v) => v.width === preset.width && v.height === preset.height,
     );
   }
+
+  const handleRescore = async () => {
+    if (!asset) return;
+    setIsRescoring(true);
+    try {
+      const result = await rescoreMedia(asset.id);
+      if (!result) {
+        toast({ title: "Rescore failed", description: "Could not reach the API.", variant: "destructive" });
+        return;
+      }
+      // Merge updated labels back into displayedVersions and allVersions.
+      const labelMap = new Map(result.versions.map((v) => [v.id, v]));
+      const mergeVersion = (v: ApiMediaVersion): ApiMediaVersion => {
+        const updated = labelMap.get(v.id);
+        return updated
+          ? { ...v, qualityScoreLabel: updated.qualityScoreLabel, qualityScoreReason: updated.qualityScoreReason }
+          : v;
+      };
+      setDisplayedVersions((prev) => prev.map(mergeVersion));
+      setAsset((prev) =>
+        prev ? { ...prev, allVersions: prev.allVersions.map(mergeVersion) } : prev,
+      );
+      toast({
+        title: "AI scoring complete",
+        description: `Scored ${result.scored} version${result.scored !== 1 ? "s" : ""} using GPT vision.`,
+      });
+    } finally {
+      setIsRescoring(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (selectedPresets.length === 0) return;
@@ -307,6 +338,22 @@ export default function MediaOptimizer() {
               ({displayedVersions.length})
             </span>
           </h2>
+          {displayedVersions.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRescore}
+              disabled={isRescoring}
+              className="gap-2"
+            >
+              {isRescoring ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              {isRescoring ? "Scoring…" : "Re-score with AI"}
+            </Button>
+          )}
         </div>
 
         <div className="p-6 overflow-y-auto flex-1">
@@ -336,7 +383,10 @@ export default function MediaOptimizer() {
                         {version.width} × {version.height} • {version.aspectRatio} • {version.format.toUpperCase()}
                       </div>
                     </div>
-                    <div className={`text-xs px-2 py-1 rounded-full text-white font-medium ${qColor}`}>
+                    <div
+                      className={`text-xs px-2 py-1 rounded-full text-white font-medium ${qColor} cursor-help`}
+                      title={version.qualityScoreReason ?? qLabel}
+                    >
                       {qLabel}
                     </div>
                   </div>

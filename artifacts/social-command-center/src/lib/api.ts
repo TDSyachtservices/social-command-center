@@ -396,6 +396,7 @@ export interface ApiMediaVersion {
   cropMode: string;
   qualityScore: number | null;
   qualityScoreLabel: string | null;
+  qualityScoreReason: string | null;
   validationStatus: string;
 }
 
@@ -439,6 +440,23 @@ export async function getMediaVersions(id: string): Promise<unknown[] | null> {
 export async function processMedia(assetId: string): Promise<boolean> {
   const result = await apiFetch<unknown>(`/api/media/${assetId}/process`, { method: "POST" });
   return result.ok;
+}
+
+export interface RescoreResult {
+  assetId: string;
+  scored: number;
+  versions: Array<{
+    id: string;
+    platform: string;
+    placement: string;
+    qualityScoreLabel: string | null;
+    qualityScoreReason: string | null;
+  }>;
+}
+
+export async function rescoreMedia(assetId: string): Promise<RescoreResult | null> {
+  const result = await apiFetch<RescoreResult>(`/api/media/${assetId}/rescore`, { method: "POST" });
+  return result.ok ? result.data : null;
 }
 
 export interface UploadIntentResult {
