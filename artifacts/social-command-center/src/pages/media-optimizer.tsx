@@ -420,7 +420,7 @@ export default function MediaOptimizer() {
       if (!result) {
         toast({
           title: "Processing failed",
-          description: "Could not reach the server. Check your connection and try again.",
+          description: "The server couldn't process this image. It may have already been processed — try refreshing the page.",
           variant: "destructive",
         });
         return;
@@ -508,8 +508,8 @@ export default function MediaOptimizer() {
 
       setDisplayedVersions(matched.length > 0 ? matched : asset!.allVersions);
 
-      if (missing.length > 0 && matched.length === 0) {
-        // No server versions at all — generate them now instead of showing an error.
+      if (asset!.allVersions.length === 0) {
+        // Truly no server versions exist yet — generate them now.
         void handleProcessImage();
       } else if (missing.length > 0) {
         toast({
