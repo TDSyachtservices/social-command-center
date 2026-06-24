@@ -6,9 +6,79 @@ import { prisma } from "../db/prisma.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
-import { processImage, IMAGE_PLATFORM_SPECS, scoreQuality } from "../services/media-processor.js";
+import {
+  processImage,
+  cropToSpec,
+  IMAGE_PLATFORM_SPECS,
+  scoreQuality,
+  type PlatformSpec,
+  type FocalPoint,
+  type ProcessedVersion,
+} from "../services/media-processor.js";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
+
+/** Absolute public base for upload URLs (Railway domain in production). */
+function buildPublicBase(): string {
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  return railwayDomain
+    ? `https://${railwayDomain}`
+    : (process.env.API_BASE_URL ?? "").replace(/\/$/, "");
+}
+
+function publicUrlFor(assetId: string, fileName: string, publicBase: string): string {
+  return publicBase
+    ? `${publicBase}/api/uploads/${assetId}/${fileName}`
+    : `/api/uploads/${assetId}/${fileName}`;
+}
+
+/**
+ * Replace an asset's MediaVersion rows from a freshly-processed set. Callers run
+ * processImage first, so old rows are only dropped after processing succeeds and
+ * a failed reprocess never destroys a working asset.
+ */
+async function persistVersions(
+  assetId: string,
+  versions: ProcessedVersion[],
+  srcWidth: number,
+  srcHeight: number,
+) {
+  const publicBase = buildPublicBase();
+  await prisma.mediaVersion.deleteMany({ where: { mediaAssetId: assetId } });
+
+  return Promise.all(
+    versions.map((v) => {
+      const fileName = path.basename(v.outputPath);
+      const { score, label } = scoreQuality(srcWidth, srcHeight, v.spec);
+      const reason = `Resolution-based score (${srcWidth}×${srcHeight} source → ${v.spec.width}×${v.spec.height} target). Re-score with AI for visual analysis.`;
+      const validationStatus =
+        label === "Poor" || label === "Needs Review" ? "NEEDS_REVIEW" : "READY";
+
+      return prisma.mediaVersion.create({
+        data: {
+          mediaAssetId: assetId,
+          platform: v.spec.platform as never,
+          placement: v.spec.placement,
+          width: v.spec.width,
+          height: v.spec.height,
+          aspectRatio: v.spec.aspectRatio,
+          format: v.spec.format,
+          mimeType: v.spec.mimeType,
+          fileSizeBytes: BigInt(v.fileSizeBytes),
+          storageKey: `uploads/${assetId}/${fileName}`,
+          publicUrl: publicUrlFor(assetId, fileName, publicBase),
+          processingStatus: "READY",
+          cropMode: "fill",
+          qualityScore: score,
+          qualityScoreLabel: label,
+          qualityScoreReason: reason,
+          validationStatus: validationStatus as never,
+        },
+      });
+    }),
+  );
+}
 
 const listQuerySchema = z.object({
   type: z.enum(["image", "video", "all"]).default("all"),
@@ -187,54 +257,22 @@ router.post(
     }
 
     try {
-      const versions = await processImage(originalPath, uploadDir, IMAGE_PLATFORM_SPECS);
+      const versions = await processImage(
+        originalPath,
+        uploadDir,
+        IMAGE_PLATFORM_SPECS,
+        asset.originalWidth ?? 0,
+        asset.originalHeight ?? 0,
+      );
 
-      // Clear any previous versions so re-uploads always produce a fresh set.
-      await prisma.mediaVersion.deleteMany({ where: { mediaAssetId: id } });
-
-      const versionRows = await Promise.all(
-        versions.map(async (v) => {
-          const fileName = path.basename(v.outputPath);
-          const vUrl = publicBase
-            ? `${publicBase}/api/uploads/${id}/${fileName}`
-            : `/api/uploads/${id}/${fileName}`;
-
-          // Use resolution heuristic as initial score.
-          // The frontend can call /api/ai/score-image (via the Replit proxy)
-          // and PATCH the result back via /api/media/version/:id/score for real AI labels.
-          const { score: finalScore, label: finalLabel } = scoreQuality(
-            asset.originalWidth ?? 0,
-            asset.originalHeight ?? 0,
-            v.spec,
-          );
-          const finalReason = `Resolution-based score (${asset.originalWidth ?? 0}×${asset.originalHeight ?? 0} source → ${v.spec.width}×${v.spec.height} target). Re-score with AI for visual analysis.`;
-
-          const validationStatus =
-            finalLabel === "Poor" || finalLabel === "Needs Review"
-              ? "NEEDS_REVIEW"
-              : "READY";
-
-          return prisma.mediaVersion.create({
-            data: {
-              mediaAssetId: id,
-              platform: v.spec.platform as never,
-              placement: v.spec.placement,
-              width: v.spec.width,
-              height: v.spec.height,
-              aspectRatio: v.spec.aspectRatio,
-              format: v.spec.format,
-              mimeType: v.spec.mimeType,
-              fileSizeBytes: BigInt(v.fileSizeBytes),
-              storageKey: `uploads/${id}/${fileName}`,
-              publicUrl: vUrl,
-              processingStatus: "READY",
-              qualityScore: finalScore,
-              qualityScoreLabel: finalLabel,
-              qualityScoreReason: finalReason,
-              validationStatus: validationStatus as never,
-            },
-          });
-        }),
+      // Replace any previous versions with the fresh set. The resolution
+      // heuristic seeds each score; the frontend can re-score with AI vision
+      // via /api/ai/score-image + PATCH /api/media/version/:id/score.
+      const versionRows = await persistVersions(
+        id,
+        versions,
+        asset.originalWidth ?? 0,
+        asset.originalHeight ?? 0,
       );
 
       await prisma.mediaAsset.update({
@@ -268,26 +306,70 @@ router.post(
 );
 
 // ─── POST /api/media/:id/process ──────────────────────────────────────────────
+// Re-generate every platform version from the stored original, synchronously.
+// ImageMagick runs inline (there is no background worker), so an asset can never
+// get stuck in PROCESSING. If no original file is stored, it errors without
+// changing state.
 router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const asset = await prisma.mediaAsset.findUnique({ where: { id } });
   if (!asset) throw notFound("MediaAsset", id);
 
-  if (!["UPLOADED", "NEEDS_REVIEW", "FAILED"].includes(asset.processingStatus)) {
-    sendError(res, "BAD_REQUEST", `Asset is already in status '${asset.processingStatus}'`);
+  if (asset.originalFileType === "video") {
+    sendError(res, "BAD_REQUEST", "Video assets are not processed by the image pipeline.");
     return;
   }
+  if (!asset.originalStorageKey) {
+    sendError(res, "BAD_REQUEST", "No original file is stored for this asset — re-upload it first.");
+    return;
+  }
+  const originalPath = path.join(process.cwd(), asset.originalStorageKey);
+  if (!fs.existsSync(originalPath)) {
+    sendError(res, "BAD_REQUEST", "The original file is missing on the server — re-upload it first.");
+    return;
+  }
+  const uploadDir = path.dirname(originalPath);
 
-  const job = await prisma.mediaProcessingJob.create({
-    data: { mediaAssetId: id, jobType: "generate_versions", status: "queued" },
-  });
+  try {
+    const versions = await processImage(
+      originalPath,
+      uploadDir,
+      IMAGE_PLATFORM_SPECS,
+      asset.originalWidth ?? 0,
+      asset.originalHeight ?? 0,
+    );
+    const versionRows = await persistVersions(
+      id,
+      versions,
+      asset.originalWidth ?? 0,
+      asset.originalHeight ?? 0,
+    );
+    await prisma.mediaAsset.update({
+      where: { id },
+      data: { processingStatus: "READY", qualityScoreLabel: "Good" },
+    });
 
-  await prisma.mediaAsset.update({
-    where: { id },
-    data: { processingStatus: "PROCESSING" },
-  });
-
-  sendSuccess(res, { jobId: job.id, status: "queued" });
+    sendSuccess(res, {
+      assetId: id,
+      versions: versionRows.map((v) => ({
+        id: v.id,
+        platform: v.platform,
+        placement: v.placement,
+        width: v.width,
+        height: v.height,
+        url: v.publicUrl,
+        qualityScore: v.qualityScore,
+        qualityScoreLabel: v.qualityScoreLabel,
+        qualityScoreReason: v.qualityScoreReason,
+      })),
+    });
+  } catch (err) {
+    await prisma.mediaAsset.update({
+      where: { id },
+      data: { processingStatus: "FAILED" },
+    });
+    throw err;
+  }
 });
 
 // ─── PATCH /api/media/:id/version/:versionId/focal-point ──────────────────────
@@ -301,14 +383,71 @@ router.patch(
   validateBody(focalPointSchema),
   async (req: Request<{ id: string; versionId: string }>, res: Response) => {
     const { id, versionId } = req.params;
-    const version = await prisma.mediaVersion.findFirst({
-      where: { id: versionId, mediaAssetId: id },
-    });
+    const body = req.body as z.infer<typeof focalPointSchema>;
+
+    const [asset, version] = await Promise.all([
+      prisma.mediaAsset.findUnique({ where: { id } }),
+      prisma.mediaVersion.findFirst({ where: { id: versionId, mediaAssetId: id } }),
+    ]);
+    if (!asset) throw notFound("MediaAsset", id);
     if (!version) throw notFound("MediaVersion", versionId);
 
+    // Re-cutting requires the stored original and a known output target.
+    if (!asset.originalStorageKey || !version.storageKey) {
+      sendError(
+        res,
+        "BAD_REQUEST",
+        "The original file is not available on the server — re-upload the image to enable cropping.",
+      );
+      return;
+    }
+    const originalPath = path.join(process.cwd(), asset.originalStorageKey);
+    const outputPath = path.join(process.cwd(), version.storageKey);
+    if (!fs.existsSync(originalPath)) {
+      sendError(
+        res,
+        "BAD_REQUEST",
+        "The original file is missing on the server — re-upload the image to enable cropping.",
+      );
+      return;
+    }
+
+    const spec: PlatformSpec = {
+      platform: version.platform as string,
+      placement: version.placement,
+      width: version.width,
+      height: version.height,
+      aspectRatio: version.aspectRatio,
+      format: version.format,
+      mimeType: version.mimeType,
+    };
+    const focal: FocalPoint = { x: body.x, y: body.y };
+
+    // Actually re-cut the image around the focal point and atomically overwrite
+    // the version's output file.
+    const fileSizeBytes = await cropToSpec(
+      originalPath,
+      outputPath,
+      spec,
+      focal,
+      asset.originalWidth ?? 0,
+      asset.originalHeight ?? 0,
+    );
+
+    // The pixels changed, so any earlier quality score is stale — clear it and
+    // flag the version so the user re-runs the AI quality check.
     const updated = await prisma.mediaVersion.update({
       where: { id: versionId },
-      data: { focalPointJson: req.body as never, processingStatus: "PENDING" },
+      data: {
+        focalPointJson: body as never,
+        cropMode: "focal",
+        fileSizeBytes: BigInt(fileSizeBytes),
+        processingStatus: "READY",
+        qualityScore: null,
+        qualityScoreLabel: null,
+        qualityScoreReason: "Crop changed — run the AI quality check again.",
+        validationStatus: "NEEDS_REVIEW",
+      },
     });
     sendSuccess(res, updated);
   },
@@ -363,8 +502,129 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const asset = await prisma.mediaAsset.findUnique({ where: { id } });
   if (!asset) throw notFound("MediaAsset", id);
-  await prisma.mediaAsset.delete({ where: { id } });
+  await prisma.mediaAsset.delete({ where: { id } }); // versions + jobs cascade
+
+  // Remove the on-disk files for this asset (best effort).
+  try {
+    fs.rmSync(path.join(process.cwd(), "uploads", id), { recursive: true, force: true });
+  } catch (err) {
+    logger.warn({ err, id }, "Failed to remove upload directory on delete");
+  }
+
   sendSuccess(res, { deleted: true });
+});
+
+// ─── POST /api/media/:id/duplicate ────────────────────────────────────────────
+// Create an independent server-side copy: a new asset row, copied on-disk files,
+// and copied version rows with every storage key / public URL rewritten to the
+// new asset id. Rolls back the new asset + files if the copy fails partway.
+router.post("/:id/duplicate", async (req: Request<{ id: string }>, res: Response) => {
+  const { id } = req.params;
+  const asset = await prisma.mediaAsset.findUnique({
+    where: { id },
+    include: { versions: true },
+  });
+  if (!asset) throw notFound("MediaAsset", id);
+
+  const dotIndex = asset.originalFileName.lastIndexOf(".");
+  const copyName =
+    dotIndex > 0
+      ? `${asset.originalFileName.slice(0, dotIndex)} (copy)${asset.originalFileName.slice(dotIndex)}`
+      : `${asset.originalFileName} (copy)`;
+
+  const newAsset = await prisma.mediaAsset.create({
+    data: {
+      originalFileName: copyName,
+      originalFileType: asset.originalFileType,
+      originalMimeType: asset.originalMimeType,
+      originalSizeBytes: asset.originalSizeBytes,
+      originalWidth: asset.originalWidth,
+      originalHeight: asset.originalHeight,
+      originalDurationSeconds: asset.originalDurationSeconds,
+      uploadedBy: asset.uploadedBy,
+      processingStatus: asset.processingStatus,
+      validationStatus: asset.validationStatus,
+      qualityScoreLabel: asset.qualityScoreLabel,
+    },
+  });
+
+  try {
+    const publicBase = buildPublicBase();
+    const srcDir = path.join(process.cwd(), "uploads", id);
+    const dstDir = path.join(process.cwd(), "uploads", newAsset.id);
+    // If the DB says this asset has files on disk but they're missing, fail (and
+    // roll back) instead of creating a copy whose storage keys point at nothing.
+    const expectsFiles =
+      Boolean(asset.originalStorageKey) || asset.versions.some((v) => Boolean(v.storageKey));
+    if (expectsFiles && !fs.existsSync(srcDir)) {
+      throw new Error(`Cannot duplicate ${id}: source files are missing on disk.`);
+    }
+    if (fs.existsSync(srcDir)) {
+      fs.cpSync(srcDir, dstDir, { recursive: true });
+    }
+
+    // Rewrite the original file's key/url to the new asset id.
+    let newOriginalKey: string | null = null;
+    let newOriginalUrl: string | null = null;
+    if (asset.originalStorageKey) {
+      const base = path.basename(asset.originalStorageKey);
+      newOriginalKey = `uploads/${newAsset.id}/${base}`;
+      newOriginalUrl = publicUrlFor(newAsset.id, base, publicBase);
+    }
+    await prisma.mediaAsset.update({
+      where: { id: newAsset.id },
+      data: { originalStorageKey: newOriginalKey, originalPublicUrl: newOriginalUrl },
+    });
+
+    // Copy version rows with keys/urls rewritten to the new asset id.
+    for (const v of asset.versions) {
+      const base = v.storageKey ? path.basename(v.storageKey) : null;
+      await prisma.mediaVersion.create({
+        data: {
+          mediaAssetId: newAsset.id,
+          platform: v.platform,
+          placement: v.placement,
+          width: v.width,
+          height: v.height,
+          aspectRatio: v.aspectRatio,
+          format: v.format,
+          mimeType: v.mimeType,
+          fileSizeBytes: v.fileSizeBytes,
+          storageKey: base ? `uploads/${newAsset.id}/${base}` : null,
+          publicUrl: base ? publicUrlFor(newAsset.id, base, publicBase) : null,
+          processingStatus: v.processingStatus,
+          cropMode: v.cropMode,
+          focalPointJson: (v.focalPointJson ?? undefined) as never,
+          qualityScore: v.qualityScore,
+          qualityScoreLabel: v.qualityScoreLabel,
+          qualityScoreReason: v.qualityScoreReason,
+          validationStatus: v.validationStatus,
+        },
+      });
+    }
+
+    const full = await prisma.mediaAsset.findUnique({
+      where: { id: newAsset.id },
+      include: { versions: { orderBy: [{ platform: "asc" }, { placement: "asc" }] } },
+    });
+    sendSuccess(res, full, undefined, 201);
+  } catch (err) {
+    // Roll back the partial copy so we never leave an orphaned asset/files.
+    try {
+      await prisma.mediaAsset.delete({ where: { id: newAsset.id } });
+    } catch {
+      /* ignore rollback failure */
+    }
+    try {
+      fs.rmSync(path.join(process.cwd(), "uploads", newAsset.id), {
+        recursive: true,
+        force: true,
+      });
+    } catch {
+      /* ignore rollback failure */
+    }
+    throw err;
+  }
 });
 
 export default router;

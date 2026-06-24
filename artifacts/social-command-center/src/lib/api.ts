@@ -443,18 +443,31 @@ export async function patchFocalPoint(
   versionId: string,
   x: number,
   y: number,
-): Promise<boolean> {
-  const result = await apiFetch<unknown>(`/api/media/${assetId}/version/${versionId}/focal-point`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ x, y }),
-  });
-  return result.ok;
+): Promise<ApiMediaVersion | null> {
+  const result = await apiFetch<ApiMediaVersion>(
+    `/api/media/${assetId}/version/${versionId}/focal-point`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    },
+  );
+  return result.ok ? result.data : null;
 }
 
 export async function processMedia(assetId: string): Promise<boolean> {
   const result = await apiFetch<unknown>(`/api/media/${assetId}/process`, { method: "POST" });
   return result.ok;
+}
+
+export async function deleteMedia(id: string): Promise<boolean> {
+  const result = await apiFetch<{ deleted: boolean }>(`/api/media/${id}`, { method: "DELETE" });
+  return result.ok && result.data.deleted;
+}
+
+export async function duplicateMedia(id: string): Promise<ApiMediaAsset | null> {
+  const result = await apiFetch<ApiMediaAsset>(`/api/media/${id}/duplicate`, { method: "POST" });
+  return result.ok ? result.data : null;
 }
 
 export interface AiScoreResult {

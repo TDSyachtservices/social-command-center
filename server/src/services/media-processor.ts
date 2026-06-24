@@ -15,6 +15,13 @@ export interface PlatformSpec {
   mimeType: string;
 }
 
+export interface FocalPoint {
+  x: number; // 0..1 fraction of source width
+  y: number; // 0..1 fraction of source height
+}
+
+export const CENTER_FOCAL: FocalPoint = { x: 0.5, y: 0.5 };
+
 export const IMAGE_PLATFORM_SPECS: PlatformSpec[] = [
   { platform: "FACEBOOK",  placement: "feed_landscape", width: 1200, height: 630,  aspectRatio: "1.91:1", format: "jpeg", mimeType: "image/jpeg" },
   { platform: "FACEBOOK",  placement: "feed_square",    width: 1080, height: 1080, aspectRatio: "1:1",    format: "jpeg", mimeType: "image/jpeg" },
@@ -31,15 +38,100 @@ export interface ProcessedVersion {
   fileSizeBytes: number;
 }
 
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(Math.max(v, lo), hi);
+}
+
 /**
- * Resize and crop an image to each platform spec using ImageMagick v7.
- * Each output uses cover-crop: resize to fill the target dimensions, then
- * centre-crop to the exact width×height.
+ * Crop + resize a source image to a single platform spec around a focal point,
+ * using ImageMagick. The image is first resized to *cover* the target box, then
+ * cropped to the exact width×height with the crop window centred on the focal
+ * point (clamped so it never leaves the resized image).
+ *
+ * - `focal` is {x,y} as 0..1 fractions of the source. {0.5,0.5} == centre crop,
+ *   which reproduces the original cover-crop behaviour.
+ * - When the source dimensions are unknown (0), we fall back to ImageMagick's
+ *   own `-resize ^ -gravity center -extent` cover-crop.
+ *
+ * Output is written atomically: ImageMagick renders to a temp file which is then
+ * renamed over the destination, so an in-place re-crop never exposes a
+ * half-written file to readers serving the same URL.
+ *
+ * Returns the output file size in bytes.
+ */
+export async function cropToSpec(
+  inputPath: string,
+  outputPath: string,
+  spec: PlatformSpec,
+  focal: FocalPoint = CENTER_FOCAL,
+  srcWidth = 0,
+  srcHeight = 0,
+): Promise<number> {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  const W = spec.width;
+  const H = spec.height;
+  const tmpPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
+
+  let args: string[];
+  if (srcWidth > 0 && srcHeight > 0) {
+    // Resize to cover the target, then crop WxH at a focal-point offset.
+    // ceil() guarantees both resized dimensions are >= the target box.
+    const scale = Math.max(W / srcWidth, H / srcHeight);
+    const resizedW = Math.max(W, Math.ceil(srcWidth * scale));
+    const resizedH = Math.max(H, Math.ceil(srcHeight * scale));
+    const offX = clamp(Math.round(focal.x * resizedW - W / 2), 0, resizedW - W);
+    const offY = clamp(Math.round(focal.y * resizedH - H / 2), 0, resizedH - H);
+    args = [
+      inputPath,
+      "-resize", `${resizedW}x${resizedH}!`,
+      "-crop", `${W}x${H}+${offX}+${offY}`,
+      "+repage",
+      "-quality", "85",
+      "-strip",
+      `jpg:${tmpPath}`, // force JPEG output regardless of the temp extension
+    ];
+  } else {
+    // Unknown source size: let ImageMagick cover-crop from the centre.
+    args = [
+      inputPath,
+      "-resize", `${W}x${H}^`,
+      "-gravity", "center",
+      "-extent", `${W}x${H}`,
+      "-quality", "85",
+      "-strip",
+      `jpg:${tmpPath}`,
+    ];
+  }
+
+  try {
+    await execFileAsync("convert", args);
+    const { size } = fs.statSync(tmpPath);
+    fs.renameSync(tmpPath, outputPath);
+    return size;
+  } catch (err) {
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      /* best effort cleanup */
+    }
+    throw err;
+  }
+}
+
+/**
+ * Resize and crop an image to each platform spec. Each output uses cover-crop
+ * centred on the focal point (defaults to centre when none is supplied).
+ * Pass the source dimensions so the focal-point offset can be computed; when
+ * they are 0 the crop falls back to ImageMagick's centre cover-crop.
  */
 export async function processImage(
   inputPath: string,
   outputDir: string,
   specs: PlatformSpec[] = IMAGE_PLATFORM_SPECS,
+  srcWidth = 0,
+  srcHeight = 0,
+  focal: FocalPoint = CENTER_FOCAL,
 ): Promise<ProcessedVersion[]> {
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -48,23 +140,8 @@ export async function processImage(
   for (const spec of specs) {
     const outputFileName = `${spec.platform.toLowerCase()}_${spec.placement}.jpg`;
     const outputPath = path.join(outputDir, outputFileName);
-
-    // convert <input> -resize W×H^ -gravity center -extent W×H -quality 85 -strip <output>
-    // Uses ImageMagick v6 "convert" (installed via apk on Alpine). The ^ modifier
-    // ensures the image is resized to *at least* the target dimensions before
-    // the -extent crops it exactly.
-    await execFileAsync("convert", [
-      inputPath,
-      "-resize", `${spec.width}x${spec.height}^`,
-      "-gravity", "center",
-      "-extent", `${spec.width}x${spec.height}`,
-      "-quality", "85",
-      "-strip",      // remove EXIF / ICC metadata to reduce file size
-      outputPath,
-    ]);
-
-    const { size } = fs.statSync(outputPath);
-    results.push({ spec, outputPath, fileSizeBytes: size });
+    const fileSizeBytes = await cropToSpec(inputPath, outputPath, spec, focal, srcWidth, srcHeight);
+    results.push({ spec, outputPath, fileSizeBytes });
   }
 
   return results;

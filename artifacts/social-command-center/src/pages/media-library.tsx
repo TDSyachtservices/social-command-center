@@ -1,7 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
-import { listMedia, uploadMediaIntent, uploadFile } from "@/lib/api";
+import {
+  listMedia,
+  uploadMediaIntent,
+  uploadFile,
+  deleteMedia,
+  duplicateMedia,
+  type ApiMediaAsset,
+} from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -31,12 +38,37 @@ type DisplayAsset = {
 
 const STORAGE_KEY = "scc:media-library:v1";
 
+// Single source of truth for turning a server media asset into the card shape.
+const toDisplayAsset = (a: ApiMediaAsset): DisplayAsset => ({
+  id: a.id,
+  originalFileName: a.originalFileName,
+  originalFileType: a.originalFileType as "image" | "video",
+  originalSizeBytes: a.originalSizeBytes,
+  originalWidth: a.originalWidth ?? 0,
+  originalHeight: a.originalHeight ?? 0,
+  uploadedAt: a.createdAt,
+  processingStatus: (a.processingStatus ?? "pending").toLowerCase(),
+  generatedVersions: (a.versions ?? []).map((v) => ({
+    platform: v.platform,
+    processingStatus: v.processingStatus === "READY" ? "complete" : v.processingStatus.toLowerCase(),
+    qualityScore: v.qualityScoreLabel ?? "",
+  })),
+  previewUrl: a.originalPublicUrl ?? undefined,
+});
+
 const loadPersisted = (): DisplayAsset[] | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as DisplayAsset[]) : null;
+    if (!Array.isArray(parsed)) return null;
+    // blob: URLs are tied to the previous page session and die on reload —
+    // drop them so the card falls back to a placeholder instead of a broken image.
+    return (parsed as DisplayAsset[]).map((a) =>
+      typeof a.previewUrl === "string" && a.previewUrl.startsWith("blob:")
+        ? { ...a, previewUrl: undefined }
+        : a,
+    );
   } catch {
     return null;
   }
@@ -84,23 +116,40 @@ export default function MediaLibrary() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (loadPersisted() !== null) return; // keep the user's saved library (with their deletions/duplicates)
+    const persisted = loadPersisted();
+
+    // First visit (no saved library): hydrate the whole library from the server.
+    if (persisted === null) {
+      listMedia().then((api) => {
+        if (api === null) return;
+        setAssets(api.map(toDisplayAsset));
+      });
+      return;
+    }
+
+    // Returning visit: keep the user's saved library (with their deletions/
+    // duplicates), but any rows whose preview was a dead blob: URL got stripped
+    // on load — repair those by merging the permanent URL (and versions) from
+    // the server, matched by id. We never add server rows that aren't already in
+    // the local list, so deletions stick.
+    if (!persisted.some((a) => !a.previewUrl)) return;
     listMedia().then((api) => {
-      if (api !== null) {
-        setAssets(
-          api.map((a) => ({
-            id: a.id,
-            originalFileName: a.originalFileName,
-            originalFileType: a.originalFileType as "image" | "video",
-            originalSizeBytes: a.originalSizeBytes,
-            originalWidth: a.originalWidth ?? 0,
-            originalHeight: a.originalHeight ?? 0,
-            uploadedAt: a.createdAt,
-            processingStatus: (a.processingStatus ?? "pending").toLowerCase(),
-            generatedVersions: [],
-          })),
-        );
-      }
+      if (api === null) return;
+      const byId = new Map(api.map((a) => [a.id, a]));
+      setAssets((prev) =>
+        prev.map((a) => {
+          if (a.previewUrl) return a;
+          const server = byId.get(a.id);
+          if (!server) return a;
+          const hydrated = toDisplayAsset(server);
+          return {
+            ...a,
+            previewUrl: hydrated.previewUrl,
+            generatedVersions:
+              a.generatedVersions.length > 0 ? a.generatedVersions : hydrated.generatedVersions,
+          };
+        }),
+      );
     });
   }, []);
 
@@ -152,6 +201,9 @@ export default function MediaLibrary() {
                 ? {
                     ...a,
                     processingStatus: "ready",
+                    // Swap the temporary blob: preview for the permanent server URL
+                    // so the thumbnail survives a page reload.
+                    previewUrl: processed.originalUrl ?? a.previewUrl,
                     generatedVersions: processed.versions.map((v) => ({
                       platform: v.platform,
                       processingStatus: "complete",
@@ -178,33 +230,44 @@ export default function MediaLibrary() {
     }
   };
 
-  const handleDuplicate = (id: string) => {
+  const handleDuplicate = async (id: string) => {
+    // Duplicate on the server so the copy has its own real asset id and on-disk
+    // files — that's what makes the copy independently optimizable.
+    const created = await duplicateMedia(id);
+    if (!created) {
+      toast({
+        title: "Duplicate failed",
+        description: "Could not copy this asset on the server.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const copy = toDisplayAsset(created);
     setAssets((prev) => {
       const index = prev.findIndex((a) => a.id === id);
-      if (index === -1) return prev;
-      const original = prev[index];
-      const dotIndex = original.originalFileName.lastIndexOf(".");
-      const name =
-        dotIndex > 0
-          ? `${original.originalFileName.slice(0, dotIndex)} (copy)${original.originalFileName.slice(dotIndex)}`
-          : `${original.originalFileName} (copy)`;
-      const copy: DisplayAsset = {
-        ...original,
-        id: `${original.id}-copy-${Date.now()}`,
-        originalFileName: name,
-        uploadedAt: new Date().toISOString(),
-        generatedVersions: original.generatedVersions.map((v) => ({ ...v })),
-      };
       const next = [...prev];
-      next.splice(index + 1, 0, copy);
+      if (index === -1) next.unshift(copy);
+      else next.splice(index + 1, 0, copy);
       return next;
     });
+    toast({ title: "Asset duplicated", description: `Created "${copy.originalFileName}".` });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!pendingDelete) return;
-    setAssets((prev) => prev.filter((a) => a.id !== pendingDelete.id));
+    const target = pendingDelete;
     setPendingDelete(null);
+    // Optimistically remove from the UI; the server delete also clears disk files.
+    setAssets((prev) => prev.filter((a) => a.id !== target.id));
+    const ok = await deleteMedia(target.id);
+    if (!ok) {
+      toast({
+        title: "Removed from library",
+        description: "We couldn't confirm server-side deletion, but it's gone from your library.",
+      });
+      return;
+    }
+    toast({ title: "Asset deleted", description: `"${target.originalFileName}" was removed.` });
   };
 
   const filters = [

@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "wouter";
-import { getMediaAsset, patchFocalPoint, uploadFile } from "@/lib/api";
+import {
+  getMediaAsset,
+  patchFocalPoint,
+  uploadFile,
+  scoreImageWithAi,
+  patchVersionScore,
+} from "@/lib/api";
 import type { ApiMediaVersion } from "@/lib/api";
 import { ALL_PRESETS } from "@/lib/mediaPresets";
 import { Button } from "@/components/ui/button";
@@ -16,6 +22,7 @@ import {
   Move,
   Loader2,
   Wand2,
+  Sparkles,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,12 +54,33 @@ function getLocalPreviewUrl(assetId: string): string | null {
   }
 }
 
+/** Append a fresh cache-busting query so re-cut images reload in the browser. */
+function withCacheBust(url: string): string {
+  return `${url.split("?")[0]}?t=${Date.now()}`;
+}
+
+/** Tailwind classes for a quality label badge. */
+function qualityBadgeClasses(label: string | null): string {
+  switch (label) {
+    case "Excellent":
+      return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800";
+    case "Good":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800";
+    case "Needs Review":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800";
+    case "Poor":
+      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800";
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
+}
+
 // ─── Crop Editor ──────────────────────────────────────────────────────────────
 interface CropEditorProps {
   asset: OptimizerAsset;
   version: ApiMediaVersion;
   onClose: () => void;
-  onSaved: (versionId: string, x: number, y: number) => void;
+  onSaved: (version: ApiMediaVersion) => void;
 }
 
 function CropEditor({ asset, version, onClose, onSaved }: CropEditorProps) {
@@ -100,13 +128,26 @@ function CropEditor({ asset, version, onClose, onSaved }: CropEditorProps) {
   const rectWidth = (visW / srcW) * 100;
   const rectHeight = (visH / srcH) * 100;
 
+  // Background size/position that render the EXACT same crop window the server
+  // writes. We render the live preview with background-image rather than
+  // <img object-position>, because object-position uses p*(scaled-target) while
+  // both this overlay and the server crop the window centred on the focal point
+  // (p*scaled - target/2, clamped). Using object-position would show a different
+  // crop than the saved output for off-centre focal points.
+  const bgSizeX = (srcW / visW) * 100;
+  const bgSizeY = (srcH / visH) * 100;
+  const denomX = srcW - visW;
+  const denomY = srcH - visH;
+  const bgPosX = denomX > 0.0001 ? ((cx * srcW - halfW) / denomX) * 100 : 50;
+  const bgPosY = denomY > 0.0001 ? ((cy * srcH - halfH) / denomY) * 100 : 50;
+
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const ok = await patchFocalPoint(asset.id, version.id, focalX / 100, focalY / 100);
-      if (!ok) throw new Error("Request failed");
-      toast({ title: "Crop saved", description: "Focal point updated on the server." });
-      onSaved(version.id, focalX / 100, focalY / 100);
+      const updated = await patchFocalPoint(asset.id, version.id, focalX / 100, focalY / 100);
+      if (!updated) throw new Error("Request failed");
+      toast({ title: "Crop saved", description: "The image was re-cut around your focal point." });
+      onSaved(updated);
       onClose();
     } catch {
       toast({ title: "Save failed", description: "Could not reach the server.", variant: "destructive" });
@@ -218,27 +259,22 @@ function CropEditor({ asset, version, onClose, onSaved }: CropEditorProps) {
           <div className="flex-1 p-4 flex items-center justify-center bg-muted/20 overflow-hidden">
             {sourceUrl ? (
               <div
-                className="overflow-hidden shadow-lg border border-border"
+                className="overflow-hidden shadow-lg border border-border bg-muted"
+                role="img"
+                aria-label="Cropped preview"
                 style={{
                   // Scale preview to fit the available space while maintaining exact ratio.
                   aspectRatio: `${version.width} / ${version.height}`,
                   maxWidth: "min(100%, 440px)",
                   maxHeight: "calc(100vh - 260px)",
                   width: "100%",
+                  // Render the exact crop window the server writes (see bgPos math above).
+                  backgroundImage: `url("${sourceUrl}")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: `${bgSizeX}% ${bgSizeY}%`,
+                  backgroundPosition: `${bgPosX}% ${bgPosY}%`,
                 }}
-              >
-                <img
-                  src={sourceUrl}
-                  alt="Cropped preview"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    objectPosition: `${focalX}% ${focalY}%`,
-                    display: "block",
-                  }}
-                />
-              </div>
+              />
             ) : (
               <div className="text-muted-foreground text-sm text-center space-y-2">
                 <Crop className="w-12 h-12 mx-auto opacity-30" />
@@ -364,17 +400,129 @@ export default function MediaOptimizer() {
     });
   }, [assetId]);
 
-  const handleFocalPointSaved = useCallback(
-    (versionId: string, x: number, y: number) => {
+  const [scoringIds, setScoringIds] = useState<Set<string>>(new Set());
+  const [isScoringAll, setIsScoringAll] = useState(false);
+
+  /** Merge a partial update into a version in both the displayed and full lists. */
+  const applyVersionUpdate = useCallback(
+    (versionId: string, patch: Partial<ApiMediaVersion>) => {
       const merge = (v: ApiMediaVersion): ApiMediaVersion =>
-        v.id === versionId ? { ...v, focalPointJson: { x, y } } : v;
+        v.id === versionId ? { ...v, ...patch } : v;
       setDisplayedVersions((prev) => prev.map(merge));
-      setAsset((prev) =>
-        prev ? { ...prev, allVersions: prev.allVersions.map(merge) } : prev,
-      );
+      setAsset((prev) => (prev ? { ...prev, allVersions: prev.allVersions.map(merge) } : prev));
     },
     [],
   );
+
+  const handleFocalPointSaved = useCallback(
+    (updated: ApiMediaVersion) => {
+      // The file at publicUrl changed but the URL didn't — bust the browser
+      // cache so the freshly re-cut image is shown instead of the stale one.
+      const busted: ApiMediaVersion = {
+        ...updated,
+        publicUrl: updated.publicUrl ? withCacheBust(updated.publicUrl) : null,
+      };
+      const merge = (v: ApiMediaVersion): ApiMediaVersion =>
+        v.id === updated.id ? busted : v;
+      setDisplayedVersions((prev) => prev.map(merge));
+      setAsset((prev) => (prev ? { ...prev, allVersions: prev.allVersions.map(merge) } : prev));
+    },
+    [],
+  );
+
+  /** Score one version with the AI vision model, persist it, and reflect locally. */
+  const scoreVersion = useCallback(
+    async (version: ApiMediaVersion): Promise<boolean> => {
+      if (!version.publicUrl) return false;
+      const result = await scoreImageWithAi({
+        imageUrl: version.publicUrl.split("?")[0], // drop any cache-bust query
+        platform: version.platform,
+        placement: version.placement,
+        width: version.width,
+        height: version.height,
+      });
+      if (!result) return false;
+      await patchVersionScore(version.id, result); // best-effort persist to Railway
+      applyVersionUpdate(version.id, {
+        qualityScore: result.score,
+        qualityScoreLabel: result.label,
+        qualityScoreReason: result.reason,
+        validationStatus:
+          result.label === "Poor" || result.label === "Needs Review"
+            ? "NEEDS_REVIEW"
+            : "READY",
+      });
+      return true;
+    },
+    [applyVersionUpdate],
+  );
+
+  const handleAiCheck = useCallback(
+    async (version: ApiMediaVersion) => {
+      if (!version.publicUrl) {
+        toast({
+          title: "Nothing to check",
+          description: "Generate this version before running the AI quality check.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setScoringIds((prev) => new Set(prev).add(version.id));
+      try {
+        const ok = await scoreVersion(version);
+        if (!ok) {
+          toast({
+            title: "AI check failed",
+            description: "Couldn't score this image. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } finally {
+        setScoringIds((prev) => {
+          const next = new Set(prev);
+          next.delete(version.id);
+          return next;
+        });
+      }
+    },
+    [scoreVersion, toast],
+  );
+
+  const handleCheckAll = useCallback(async () => {
+    const targets = displayedVersions.filter((v) => v.publicUrl);
+    if (targets.length === 0 || isScoringAll) return;
+    setIsScoringAll(true);
+    setScoringIds(new Set(targets.map((v) => v.id)));
+    let ok = 0;
+    let fail = 0;
+    let cursor = 0;
+    const CONCURRENCY = 2;
+    const worker = async () => {
+      while (cursor < targets.length) {
+        const v = targets[cursor++];
+        try {
+          if (await scoreVersion(v)) ok += 1;
+          else fail += 1;
+        } catch {
+          fail += 1;
+        }
+        setScoringIds((prev) => {
+          const next = new Set(prev);
+          next.delete(v.id);
+          return next;
+        });
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker),
+    );
+    setIsScoringAll(false);
+    setScoringIds(new Set());
+    toast({
+      title: "AI quality check complete",
+      description: `${ok} scored${fail ? `, ${fail} failed` : ""}.`,
+    });
+  }, [displayedVersions, isScoringAll, scoreVersion, toast]);
 
   /**
    * Generate platform versions by sending the image from localStorage (blob URL)
@@ -655,14 +803,33 @@ export default function MediaOptimizer() {
           />
         ) : (
           <>
-            <div className="p-5 border-b bg-background flex items-center justify-between flex-shrink-0">
+            <div className="p-5 border-b bg-background flex items-center justify-between gap-3 flex-shrink-0">
               <h2 className="text-xl font-bold">
                 Versions
                 <span className="text-muted-foreground font-normal text-base ml-2">
                   ({displayedVersions.length})
                 </span>
               </h2>
-              <p className="text-sm text-muted-foreground">Click <strong>Edit Crop</strong> on any version to adjust the focal point</p>
+              <div className="flex items-center gap-3">
+                <p className="hidden lg:block text-sm text-muted-foreground">
+                  Click <strong>Edit Crop</strong> to adjust the focal point
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={isScoringAll || displayedVersions.every((v) => !v.publicUrl)}
+                  onClick={handleCheckAll}
+                  data-testid="btn-ai-check-all"
+                >
+                  {isScoringAll ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isScoringAll ? "Checking…" : "AI check all"}
+                </Button>
+              </div>
             </div>
 
             <div className="p-5 overflow-y-auto flex-1">
@@ -710,17 +877,60 @@ export default function MediaOptimizer() {
                         )}
                       </div>
 
+                      {/* Quality */}
+                      <div className="px-3 pt-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[11px] px-1.5 py-0.5 rounded border font-medium ${qualityBadgeClasses(version.qualityScoreLabel)}`}
+                          >
+                            {version.qualityScoreLabel ?? "Not scored"}
+                          </span>
+                          {version.qualityScore != null && (
+                            <span className="text-[11px] text-muted-foreground tabular-nums">
+                              {Math.round(version.qualityScore * 100)}%
+                            </span>
+                          )}
+                        </div>
+                        {version.qualityScoreReason && (
+                          <p
+                            className="text-[11px] text-muted-foreground mt-1 line-clamp-2"
+                            title={version.qualityScoreReason}
+                          >
+                            {version.qualityScoreReason}
+                          </p>
+                        )}
+                      </div>
+
                       {/* Actions */}
                       <div className="p-3 flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="flex-1 gap-1.5"
+                          // Block crop edits while this version is being scored so a
+                          // late-returning AI result can't overwrite the score that the
+                          // re-crop is about to invalidate.
+                          disabled={scoringIds.has(version.id) || isScoringAll}
                           onClick={() => setEditingVersion(version)}
                           data-testid={`btn-edit-crop-${version.id}`}
                         >
                           <Crop className="w-3.5 h-3.5" />
                           Edit Crop
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={!version.publicUrl || scoringIds.has(version.id)}
+                          onClick={() => handleAiCheck(version)}
+                          data-testid={`btn-ai-check-${version.id}`}
+                        >
+                          {scoringIds.has(version.id) ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          AI
                         </Button>
                         {version.publicUrl && (
                           <Button variant="outline" size="sm" asChild>
