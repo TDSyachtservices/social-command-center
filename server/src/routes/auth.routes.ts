@@ -6,6 +6,7 @@ import {
   exchangeCodeForToken,
   getLongLivedToken,
   getPages,
+  getGrantedPermissions,
 } from "../adapters/facebook.js";
 
 const router = Router();
@@ -68,6 +69,13 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
     // Step 2: upgrade to 60-day long-lived user token
     const { token: longToken, expiresIn } = await getLongLivedToken(shortToken);
 
+    // Step 2b: fetch the permissions Facebook actually GRANTED (not just what we asked for).
+    // The user can deselect permissions on the consent screen, so this is the source of truth.
+    const grantedScopes = await getGrantedPermissions(longToken);
+    const canPost = grantedScopes.includes("pages_manage_posts");
+    const canReadEngagement = grantedScopes.includes("pages_read_engagement");
+    logger.info({ grantedScopes, canPost }, "Facebook granted permissions");
+
     // Step 3: list all Facebook Pages this user manages
     const pages = await getPages(longToken);
 
@@ -95,16 +103,16 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             connectionStatus: "connected",
             tokenEncrypted: encryptedToken,
             tokenExpiresAt: expiresAt,
-            postingCapability: true,
-            commentReadCapability: true,
-            commentReplyCapability: true,
-            moderationCapability: true,
+            postingCapability: canPost,
+            commentReadCapability: canReadEngagement,
+            commentReplyCapability: canPost,
+            moderationCapability: canPost,
             lastSync: new Date(),
-            scopes: FB_SCOPES.split(","),
+            scopes: grantedScopes.length > 0 ? grantedScopes : FB_SCOPES.split(","),
             metadata: { category: page.category },
           },
         });
-        logger.info({ pageId: page.id, name: page.name }, "Facebook page token refreshed");
+        logger.info({ pageId: page.id, name: page.name, canPost }, "Facebook page token refreshed");
       } else {
         await prisma.socialAccount.create({
           data: {
@@ -114,16 +122,16 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             connectionStatus: "connected",
             tokenEncrypted: encryptedToken,
             tokenExpiresAt: expiresAt,
-            postingCapability: true,
-            commentReadCapability: true,
-            commentReplyCapability: true,
-            moderationCapability: true,
+            postingCapability: canPost,
+            commentReadCapability: canReadEngagement,
+            commentReplyCapability: canPost,
+            moderationCapability: canPost,
             lastSync: new Date(),
-            scopes: FB_SCOPES.split(","),
+            scopes: grantedScopes.length > 0 ? grantedScopes : FB_SCOPES.split(","),
             metadata: { category: page.category },
           },
         });
-        logger.info({ pageId: page.id, name: page.name }, "Facebook page connected");
+        logger.info({ pageId: page.id, name: page.name, canPost }, "Facebook page connected");
       }
       connectedCount++;
     }

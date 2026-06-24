@@ -70,6 +70,22 @@ export async function getLongLivedToken(shortToken: string): Promise<{ token: st
   return { token: data.access_token, expiresIn: data.expires_in ?? 5_184_000 };
 }
 
+export async function getGrantedPermissions(userToken: string): Promise<string[]> {
+  const url = new URL(`${GRAPH}/me/permissions`);
+  url.searchParams.set("access_token", userToken);
+
+  const res = await fetch(url.toString());
+  const data = (await res.json()) as {
+    data?: Array<{ permission: string; status: string }>;
+    error?: { message: string };
+  };
+  if (!data.data) {
+    logger.warn({ error: data.error }, "Could not fetch granted permissions");
+    return [];
+  }
+  return data.data.filter((p) => p.status === "granted").map((p) => p.permission);
+}
+
 export async function getPages(userToken: string): Promise<Array<{
   id: string;
   name: string;
