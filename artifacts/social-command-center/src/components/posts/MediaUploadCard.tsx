@@ -29,6 +29,45 @@ type LibraryAsset = {
   uploadedAt: string;
 };
 
+type PlatformSpec = {
+  platform: string;
+  recWidth: number;
+  recHeight: number;
+  minWidth: number;
+  note: string;
+};
+
+const IMAGE_SPECS: PlatformSpec[] = [
+  { platform: "Facebook",  recWidth: 1200, recHeight: 630,  minWidth: 600, note: "Landscape feed post" },
+  { platform: "Instagram", recWidth: 1080, recHeight: 1080, minWidth: 320, note: "Square feed post" },
+  { platform: "LinkedIn",  recWidth: 1200, recHeight: 627,  minWidth: 552, note: "Landscape post" },
+  { platform: "TikTok",    recWidth: 1080, recHeight: 1920, minWidth: 540, note: "Vertical photo post" },
+  { platform: "Website",   recWidth: 1200, recHeight: 628,  minWidth: 600, note: "Open Graph image" },
+];
+
+const VIDEO_SPECS: PlatformSpec[] = [
+  { platform: "Facebook",  recWidth: 1280, recHeight: 720,  minWidth: 600,  note: "16:9 landscape video" },
+  { platform: "Instagram", recWidth: 1080, recHeight: 1080, minWidth: 320,  note: "Square feed video" },
+  { platform: "LinkedIn",  recWidth: 1920, recHeight: 1080, minWidth: 360,  note: "16:9 landscape video" },
+  { platform: "TikTok",    recWidth: 1080, recHeight: 1920, minWidth: 540,  note: "9:16 vertical video" },
+  { platform: "Website",   recWidth: 1920, recHeight: 1080, minWidth: 640,  note: "16:9 embed video" },
+];
+
+type CompatStatus = "compatible" | "will-crop" | "too-small";
+
+function checkCompat(
+  imgW: number,
+  imgH: number,
+  spec: PlatformSpec
+): CompatStatus {
+  if (imgW === 0 || imgH === 0) return "compatible"; // unknown — don't flag
+  if (imgW < spec.minWidth) return "too-small";
+  const imgRatio = imgW / imgH;
+  const specRatio = spec.recWidth / spec.recHeight;
+  const diff = Math.abs(imgRatio - specRatio) / specRatio;
+  return diff <= 0.15 ? "compatible" : "will-crop";
+}
+
 function measureDimensions(file: File): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -67,16 +106,21 @@ function loadLibraryAssets(): LibraryAsset[] {
   }
 }
 
+const compatLabel: Record<CompatStatus, { text: string; dot: string; textColor: string }> = {
+  compatible:  { text: "Compatible",    dot: "bg-green-500", textColor: "text-green-600 dark:text-green-400" },
+  "will-crop": { text: "Will be cropped", dot: "bg-amber-500", textColor: "text-amber-600 dark:text-amber-400" },
+  "too-small": { text: "Too small",     dot: "bg-red-500",   textColor: "text-red-600 dark:text-red-400" },
+};
+
 export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<"image" | "video">("image");
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [showVersions, setShowVersions] = useState(true);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [libraryAssets, setLibraryAssets] = useState<LibraryAsset[]>([]);
-
-  const mockPlatforms = ["Facebook", "Instagram", "LinkedIn", "TikTok", "Website"];
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -84,13 +128,15 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
 
     setIsUploading(true);
     try {
-      const { width, height } = await measureDimensions(file);
+      const dims = await measureDimensions(file);
+      setDimensions(dims);
+
       const result = await uploadMediaIntent({
         fileName: file.name,
         mimeType: file.type,
         fileSizeBytes: file.size,
-        originalWidth: width || undefined,
-        originalHeight: height || undefined,
+        originalWidth: dims.width || undefined,
+        originalHeight: dims.height || undefined,
       });
 
       const blobUrl = URL.createObjectURL(file);
@@ -105,8 +151,8 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
           originalFileName: file.name,
           originalFileType: mediaType,
           originalSizeBytes: file.size,
-          originalWidth: width,
-          originalHeight: height,
+          originalWidth: dims.width,
+          originalHeight: dims.height,
           previewUrl: blobUrl,
         });
         toast({ title: "Media saved to library", description: `${file.name} is now in your Media Library.` });
@@ -132,6 +178,7 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
     }
     setPreview(asset.previewUrl);
     setPreviewType(asset.originalFileType);
+    setDimensions({ width: asset.originalWidth, height: asset.originalHeight });
     onMediaSelect(asset.previewUrl, asset.originalFileType);
     setShowLibraryPicker(false);
     toast({ title: "Media selected", description: `${asset.originalFileName} attached to this post.` });
@@ -139,8 +186,11 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
 
   const handleRemove = () => {
     setPreview(null);
+    setDimensions(null);
     onMediaSelect("", "image");
   };
+
+  const specs = previewType === "video" ? VIDEO_SPECS : IMAGE_SPECS;
 
   return (
     <div className="space-y-3">
@@ -189,6 +239,11 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
             ) : (
               <img src={preview} alt="Preview" className="w-full h-full object-cover relative z-10" />
             )}
+            {dimensions && dimensions.width > 0 && (
+              <div className="absolute bottom-2 left-2 z-20 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                {dimensions.width}×{dimensions.height}
+              </div>
+            )}
             <button
               onClick={handleRemove}
               className="absolute top-2 right-2 z-20 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
@@ -202,39 +257,46 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
               className="w-full p-3 flex items-center justify-between bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium"
               onClick={() => setShowVersions(!showVersions)}
             >
-              <span>Platform Versions</span>
+              <span>Platform Compatibility</span>
               {showVersions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
 
             {showVersions && (
               <div className="p-3 space-y-3">
+                {dimensions && dimensions.width > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Your file is <span className="font-medium text-foreground">{dimensions.width}×{dimensions.height}px</span>. Compatibility is based on aspect ratio and minimum size requirements.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-2">
-                  {mockPlatforms.map((p, i) => {
-                    const isReady = i % 3 !== 2;
+                  {specs.map((spec) => {
+                    const status = dimensions
+                      ? checkCompat(dimensions.width, dimensions.height, spec)
+                      : "compatible";
+                    const { text, dot, textColor } = compatLabel[status];
                     return (
-                      <div key={p} className="flex items-center justify-between text-xs p-2 rounded bg-muted/50 border border-transparent hover:border-border">
-                        <div className="flex items-center gap-2">
-                          <PlatformBadge platform={p} showText={true} />
-                          <span className="text-muted-foreground hidden sm:inline">1080×1080</span>
+                      <div key={spec.platform} className="flex items-center justify-between text-xs p-2 rounded bg-muted/50 border border-transparent hover:border-border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <PlatformBadge platform={spec.platform} showText={true} />
+                          <span className="text-muted-foreground hidden sm:inline shrink-0">
+                            {spec.recWidth}×{spec.recHeight}
+                          </span>
+                          <span className="text-muted-foreground/60 hidden md:inline truncate">
+                            — {spec.note}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isReady ? (
-                            <>
-                              <div className="w-2 h-2 rounded-full bg-green-500" />
-                              <span className="text-green-600 dark:text-green-400 font-medium">Ready</span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="w-2 h-2 rounded-full bg-amber-500" />
-                              <span className="text-amber-600 dark:text-amber-400 font-medium">Needs Review</span>
-                            </>
-                          )}
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <div className={`w-2 h-2 rounded-full ${dot}`} />
+                          <span className={`font-medium ${textColor}`}>{text}</span>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="pt-2">
+                <div className="text-xs text-muted-foreground pt-1">
+                  "Will be cropped" means your image will be auto-cropped to fit — use the Media Optimizer to control exactly how.
+                </div>
+                <div className="pt-1">
                   <Button variant="outline" className="w-full text-xs" asChild>
                     <Link href="/media-library">View in Media Library</Link>
                   </Button>
