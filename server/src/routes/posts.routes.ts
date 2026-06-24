@@ -29,7 +29,7 @@ const createPostSchema = z.object({
   platforms: z
     .array(z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]))
     .min(1),
-  accountIds: z.array(z.string()).min(1),
+  accountIds: z.array(z.string()).default([]),
 });
 
 const updatePostSchema = createPostSchema.partial();

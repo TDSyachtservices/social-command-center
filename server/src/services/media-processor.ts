@@ -49,10 +49,11 @@ export async function processImage(
     const outputFileName = `${spec.platform.toLowerCase()}_${spec.placement}.jpg`;
     const outputPath = path.join(outputDir, outputFileName);
 
-    // magick <input> -resize W×H^ -gravity center -extent W×H -quality 85 -strip <output>
-    // The ^ modifier ensures the image is resized to *at least* the target
-    // dimensions before the -extent crops it exactly.
-    await execFileAsync("magick", [
+    // convert <input> -resize W×H^ -gravity center -extent W×H -quality 85 -strip <output>
+    // Uses ImageMagick v6 "convert" (installed via apk on Alpine). The ^ modifier
+    // ensures the image is resized to *at least* the target dimensions before
+    // the -extent crops it exactly.
+    await execFileAsync("convert", [
       inputPath,
       "-resize", `${spec.width}x${spec.height}^`,
       "-gravity", "center",
