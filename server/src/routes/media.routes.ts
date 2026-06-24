@@ -155,9 +155,13 @@ router.post(
     const fileBuffer = Buffer.from(body.fileData, "base64");
     fs.writeFileSync(originalPath, fileBuffer);
 
-    // Build the public base URL from env (set PUBLIC_URL on Railway to the
-    // app's public domain, e.g. https://my-app.up.railway.app).
-    const publicBase = (process.env.PUBLIC_URL ?? "").replace(/\/$/, "");
+    // Build the public base URL.
+    // RAILWAY_PUBLIC_DOMAIN is set automatically by Railway (e.g. "my-app.up.railway.app").
+    // Fall back to API_BASE_URL (another custom var already in the Railway project) or empty.
+    const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+    const publicBase = railwayDomain
+      ? `https://${railwayDomain}`
+      : (process.env.API_BASE_URL ?? "").replace(/\/$/, "");
     const originalUrl = publicBase
       ? `${publicBase}/api/uploads/${id}/original.${ext}`
       : `/api/uploads/${id}/original.${ext}`;
