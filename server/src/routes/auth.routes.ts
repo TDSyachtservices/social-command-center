@@ -108,7 +108,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             commentReplyCapability: canPost,
             moderationCapability: canPost,
             lastSync: new Date(),
-            scopes: grantedScopes.length > 0 ? grantedScopes : FB_SCOPES.split(","),
+            scopes: grantedScopes,
             metadata: { category: page.category },
           },
         });
@@ -127,7 +127,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             commentReplyCapability: canPost,
             moderationCapability: canPost,
             lastSync: new Date(),
-            scopes: grantedScopes.length > 0 ? grantedScopes : FB_SCOPES.split(","),
+            scopes: grantedScopes,
             metadata: { category: page.category },
           },
         });

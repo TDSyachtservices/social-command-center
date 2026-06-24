@@ -29,6 +29,23 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
 
     const account = platform.account;
 
+    // Defensive guard: never publish a platform row through an adapter for a
+    // different platform. If the row's target platform and the account's
+    // platform disagree, skip instead of cross-posting (e.g. an Instagram row
+    // accidentally attached to a Facebook account).
+    if (platform.platform !== account.platform) {
+      logger.warn(
+        { rowPlatform: platform.platform, accountPlatform: account.platform, platformId: platform.id },
+        "Platform/account mismatch — skipping to avoid cross-posting",
+      );
+      await prisma.scheduledPostPlatform.update({
+        where: { id: platform.id },
+        data: { status: "SKIPPED", errorMessage: "Account platform does not match the target platform" },
+      });
+      skipped++;
+      continue;
+    }
+
     if (account.platform !== "FACEBOOK") {
       logger.info({ platform: account.platform }, "Platform adapter not yet implemented — skipping");
       await prisma.scheduledPostPlatform.update({

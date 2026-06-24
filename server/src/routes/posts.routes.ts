@@ -87,6 +87,19 @@ router.post(
   async (req: Request, res: Response) => {
     const body = req.body as z.infer<typeof createPostSchema>;
 
+    // Pair each selected platform with an account of the SAME platform.
+    // Never trust positional alignment between `platforms` and `accountIds`:
+    // if a platform is selected without a matching connected account, a
+    // positional map would attach the wrong account (e.g. an Instagram row
+    // pointing at the Facebook account), causing a duplicate Facebook post.
+    const selectedAccounts = body.accountIds.length
+      ? await prisma.socialAccount.findMany({ where: { id: { in: body.accountIds } } })
+      : [];
+    const selectedPlatforms = new Set<string>(body.platforms);
+    const platformRows = selectedAccounts
+      .filter((a) => selectedPlatforms.has(a.platform))
+      .map((a) => ({ platform: a.platform, accountId: a.id }));
+
     const post = await prisma.scheduledPost.create({
       data: {
         title: body.title,
@@ -95,12 +108,7 @@ router.post(
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
         mediaUrl: body.mediaUrl ?? null,
         mediaType: body.mediaType ?? null,
-        platforms: {
-          create: body.platforms.map((platform, i) => ({
-            platform: platform as never,
-            accountId: body.accountIds[i] ?? body.accountIds[0],
-          })),
-        },
+        platforms: { create: platformRows },
       },
       include: { platforms: true },
     });
