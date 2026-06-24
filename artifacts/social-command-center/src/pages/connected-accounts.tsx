@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
-import { listAccounts } from "@/lib/api";
+import { listAccounts, disconnectAccount } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { Check, X, AlertCircle, CheckCircle2, Facebook, ExternalLink } from "lucide-react";
 
 type DisplayAccount = {
@@ -36,6 +47,9 @@ function getCallbackBanner(): { type: "success" | "error"; message: string } | n
 export default function ConnectedAccounts() {
   const [accounts, setAccounts] = useState<DisplayAccount[]>([]);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const { toast } = useToast();
   const apiConfigured = Boolean(API_BASE);
 
   useEffect(() => {
@@ -75,6 +89,29 @@ export default function ConnectedAccounts() {
       return;
     }
     window.location.href = `${API_BASE}/api/auth/facebook`;
+  };
+
+  const handleDisconnectConfirm = async () => {
+    if (!disconnectingId) return;
+    setIsDisconnecting(true);
+    try {
+      const ok = await disconnectAccount(disconnectingId);
+      if (ok) {
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.id === disconnectingId
+              ? { ...a, connectionStatus: "disconnected", lastSync: null }
+              : a
+          )
+        );
+        toast({ title: "Account disconnected", description: "The account has been disconnected." });
+      } else {
+        toast({ title: "Disconnect failed", description: "Could not disconnect. Try again.", variant: "destructive" });
+      }
+    } finally {
+      setIsDisconnecting(false);
+      setDisconnectingId(null);
+    }
   };
 
   return (
@@ -188,13 +225,45 @@ export default function ConnectedAccounts() {
                   {account.platform === "facebook" && (
                     <Button variant="outline" className="flex-1" onClick={connectFacebook}>Reconnect</Button>
                   )}
-                  <Button variant="destructive" className="flex-1">Disconnect</Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => setDisconnectingId(account.id)}
+                  >
+                    Disconnect
+                  </Button>
                 </>
               )}
             </CardFooter>
           </Card>
         ))}
       </div>
+
+      <AlertDialog open={!!disconnectingId} onOpenChange={(open) => { if (!open) setDisconnectingId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const acct = accounts.find((a) => a.id === disconnectingId);
+                return acct
+                  ? `"${acct.accountName}" will be disconnected. You can reconnect it at any time.`
+                  : "This account will be disconnected.";
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDisconnecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDisconnectConfirm}
+              disabled={isDisconnecting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
