@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import type { PostStatus } from "@/data/mockPosts";
-import { listPosts } from "@/lib/api";
+import { listPosts, deletePost } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -9,6 +9,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { Trash2 } from "lucide-react";
 
 type DisplayPost = {
   id: string;
@@ -21,12 +33,15 @@ type DisplayPost = {
 export default function Posts() {
   const search = useSearch();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const params = new URLSearchParams(search);
   const initialStatus = params.get("status") || "all";
 
   const [filter, setFilter] = useState(initialStatus);
   const [searchTerm, setSearchTerm] = useState("");
   const [posts, setPosts] = useState<DisplayPost[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
@@ -48,6 +63,23 @@ export default function Posts() {
     return matchesStatus && matchesSearch;
   });
 
+  const handleDeleteConfirm = async () => {
+    if (!deletingId) return;
+    setIsDeleting(true);
+    try {
+      const ok = await deletePost(deletingId);
+      if (ok) {
+        setPosts((prev) => prev.filter((p) => p.id !== deletingId));
+        toast({ title: "Post deleted", description: "The post has been permanently removed." });
+      } else {
+        toast({ title: "Delete failed", description: "Could not delete the post. Try again.", variant: "destructive" });
+      }
+    } finally {
+      setIsDeleting(false);
+      setDeletingId(null);
+    }
+  };
+
   const statusLabel: Record<string, string> = {
     all: "All Statuses",
     draft: "Drafts",
@@ -56,6 +88,8 @@ export default function Posts() {
     failed: "Failed",
     archived: "Archived",
   };
+
+  const deletingPost = posts.find((p) => p.id === deletingId);
 
   return (
     <div className="space-y-6">
@@ -130,12 +164,33 @@ export default function Posts() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setLocation(`/create-post?edit=${post.id}`)} data-testid={`btn-edit-${post.id}`}>Edit</Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setLocation(`/create-post?edit=${post.id}`)}
+                          data-testid={`btn-edit-${post.id}`}
+                        >
+                          Edit
+                        </Button>
                         {post.status === "failed" && (
-                          <Button variant="outline" size="sm" className="text-destructive border-destructive/30" data-testid={`btn-retry-${post.id}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive border-destructive/30"
+                            data-testid={`btn-retry-${post.id}`}
+                          >
                             Retry
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeletingId(post.id)}
+                          data-testid={`btn-delete-${post.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -145,6 +200,27 @@ export default function Posts() {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{deletingPost?.title}&rdquo; will be permanently deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
