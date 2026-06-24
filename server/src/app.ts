@@ -30,31 +30,39 @@ app.set("json replacer", (_key: string, value: unknown) =>
 );
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.FRONTEND_URL ?? "")
-  .split(",")
+// Explicit origins from env vars (comma-separated).
+const configuredOrigins = [
+  ...(process.env.FRONTEND_URL ?? "").split(","),
+  ...(process.env.CORS_ORIGINS ?? "").split(","),
+]
   .map((u) => u.trim())
   .filter(Boolean);
+
+/** Return true for origins that are always safe to allow. */
+function isAlwaysAllowed(origin: string): boolean {
+  // Localhost (any port) — Replit dev preview proxies as localhost.
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  // Replit preview / published domains.
+  if (origin.endsWith(".replit.dev")) return true;
+  if (origin.endsWith(".repl.co")) return true;
+  if (origin.endsWith(".replit.app")) return true;
+  return false;
+}
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) {
-        cb(null, true);
-        return;
+      // No origin = same-origin or non-browser (curl, health checks) — allow.
+      if (!origin) { cb(null, true); return; }
+      // Always allow Replit preview domains and localhost.
+      if (isAlwaysAllowed(origin)) { cb(null, true); return; }
+      // Check explicitly configured origins.
+      if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
+        cb(null, true); return;
       }
-      if (allowedOrigins.length === 0) {
-        if (process.env.NODE_ENV === "production") {
-          cb(new Error("CORS: FRONTEND_URL is not set in production"));
-        } else {
-          cb(null, true);
-        }
-        return;
-      }
-      if (allowedOrigins.includes(origin)) {
-        cb(null, true);
-      } else {
-        cb(new Error(`CORS: origin '${origin}' not allowed`));
-      }
+      // In development allow everything; in production block unknown origins.
+      if (process.env.NODE_ENV !== "production") { cb(null, true); return; }
+      cb(new Error(`CORS: origin '${origin}' not allowed`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
