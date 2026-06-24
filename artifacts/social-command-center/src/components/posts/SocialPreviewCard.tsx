@@ -8,17 +8,18 @@ interface SocialPreviewCardProps {
   caption: string;
   mediaUrl: string | null;
   date?: string;
+  accountName?: string;
   optimizedVersion?: { width: number; height: number; qualityScore: string; cropMode: string };
 }
 
-export function SocialPreviewCard({ platform, caption, mediaUrl, date, optimizedVersion }: SocialPreviewCardProps) {
+export function SocialPreviewCard({ platform, caption, mediaUrl, date, accountName, optimizedVersion }: SocialPreviewCardProps) {
   return (
     <Card className="overflow-hidden flex flex-col h-full bg-white dark:bg-slate-950">
       <div className="p-3 border-b bg-muted/20 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <PlatformBadge platform={platform} showText={false} />
           <div className="flex flex-col">
-            <span className="text-xs font-semibold">Marine Decking Co</span>
+            <span className="text-xs font-semibold">{accountName || "Your Page"}</span>
             <span className="text-[10px] text-muted-foreground">{date || "Preview"}</span>
           </div>
         </div>

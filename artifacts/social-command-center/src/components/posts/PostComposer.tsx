@@ -48,6 +48,13 @@ export function PostComposer() {
       .map((a) => a.id);
   };
 
+  const accountNames: Partial<Record<Platform, string>> = Object.fromEntries(
+    platforms.flatMap((p) => {
+      const match = accounts.find((a) => a.platform.toUpperCase() === p.toUpperCase());
+      return match ? [[p, match.accountName]] : [];
+    })
+  );
+
   const buildPostBody = () => ({
     title,
     masterCaption,
@@ -236,6 +243,7 @@ export function PostComposer() {
             platformCaptions={platformCaptions}
             mediaUrl={mediaUrl}
             date={date ? `${format(date, "PPP")} at ${time}` : "Preview"}
+            accountNames={accountNames}
           />
         </div>
       </div>
