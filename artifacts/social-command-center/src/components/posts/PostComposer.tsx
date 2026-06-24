@@ -14,9 +14,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { listAccounts, createPost, schedulePost, publishPost, type ApiAccount } from "@/lib/api";
+import { listAccounts, createPost, updatePost, schedulePost, publishPost, getPost, type ApiAccount } from "@/lib/api";
 
-export function PostComposer() {
+interface PostComposerProps {
+  editPostId?: string;
+}
+
+export function PostComposer({ editPostId }: PostComposerProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -30,12 +34,42 @@ export function PostComposer() {
 
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingPost, setIsLoadingPost] = useState(!!editPostId);
+
+  const isEditMode = !!editPostId;
 
   useEffect(() => {
     listAccounts().then((api) => {
       if (api !== null) setAccounts(api.filter((a) => a.connectionStatus === "connected"));
     });
   }, []);
+
+  useEffect(() => {
+    if (!editPostId) return;
+    setIsLoadingPost(true);
+    getPost(editPostId).then((post) => {
+      if (post) {
+        setTitle(post.title);
+        setMasterCaption(post.masterCaption);
+        const postPlatforms = post.platforms.map(
+          (pl) => (pl.platform.charAt(0).toUpperCase() + pl.platform.slice(1).toLowerCase()) as Platform
+        );
+        setPlatforms(postPlatforms.length > 0 ? postPlatforms : ["Facebook", "Instagram"]);
+        if (post.mediaUrl) setMediaUrl(post.mediaUrl);
+        if (post.scheduledAt) {
+          const d = new Date(post.scheduledAt);
+          setDate(d);
+          const h = String(d.getHours()).padStart(2, "0");
+          const m = String(d.getMinutes()).padStart(2, "0");
+          setTime(`${h}:${m}`);
+        }
+      } else {
+        toast({ title: "Post not found", description: "Could not load the post for editing.", variant: "destructive" });
+        setLocation("/posts");
+      }
+      setIsLoadingPost(false);
+    });
+  }, [editPostId]);
 
   const handlePlatformCaptionChange = (platform: Platform, caption: string) => {
     setPlatformCaptions(prev => ({ ...prev, [platform]: caption }));
@@ -70,9 +104,12 @@ export function PostComposer() {
   const handleSaveDraft = async () => {
     setIsSubmitting(true);
     try {
-      const post = await createPost({ ...buildPostBody(), status: "DRAFT" });
+      const body = { ...buildPostBody(), status: "DRAFT" };
+      const post = isEditMode
+        ? await updatePost(editPostId!, body)
+        : await createPost(body);
       if (post) {
-        toast({ title: "Draft saved", description: `"${title}" saved as draft.` });
+        toast({ title: isEditMode ? "Post updated" : "Draft saved", description: `"${title}" saved as draft.` });
         setLocation("/posts");
       } else {
         toast({ title: "Failed to save draft", description: "The server returned an error. Check that the API is reachable.", variant: "destructive" });
@@ -95,9 +132,12 @@ export function PostComposer() {
 
     setIsSubmitting(true);
     try {
-      const post = await createPost({ ...buildPostBody(), status: "DRAFT" });
+      const body = { ...buildPostBody(), status: "DRAFT" };
+      const post = isEditMode
+        ? await updatePost(editPostId!, body)
+        : await createPost(body);
       if (!post) {
-        toast({ title: "Failed to create post", description: "The server returned an error.", variant: "destructive" });
+        toast({ title: "Failed to save post", description: "The server returned an error.", variant: "destructive" });
         return;
       }
       const ok = await schedulePost(post.id, scheduledAt.toISOString());
@@ -118,9 +158,12 @@ export function PostComposer() {
   const handlePublishNow = async () => {
     setIsSubmitting(true);
     try {
-      const post = await createPost({ ...buildPostBody(), status: "DRAFT" });
+      const body = { ...buildPostBody(), status: "DRAFT" };
+      const post = isEditMode
+        ? await updatePost(editPostId!, body)
+        : await createPost(body);
       if (!post) {
-        toast({ title: "Failed to create post", description: "The server returned an error.", variant: "destructive" });
+        toast({ title: "Failed to save post", description: "The server returned an error.", variant: "destructive" });
         return;
       }
       const ok = await publishPost(post.id);
@@ -128,7 +171,7 @@ export function PostComposer() {
         toast({ title: "Post published", description: `"${title}" sent to Facebook.` });
         setLocation("/posts");
       } else {
-        toast({ title: "Publish failed", description: "Post was created but publishing failed. You can retry it from the Posts page.", variant: "destructive" });
+        toast({ title: "Publish failed", description: "Post was saved but publishing failed. You can retry it from the Posts page.", variant: "destructive" });
         setLocation("/posts?status=failed");
       }
     } catch {
@@ -137,6 +180,15 @@ export function PostComposer() {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoadingPost) {
+    return (
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mr-3" />
+        Loading post…
+      </div>
+    );
+  }
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
@@ -212,7 +264,7 @@ export function PostComposer() {
                 className="flex-1 min-w-[150px]"
                 onClick={handleSchedule}
               >
-                {isSubmitting ? "Saving…" : "Schedule Post"}
+                {isSubmitting ? "Saving…" : isEditMode ? "Reschedule" : "Schedule Post"}
               </Button>
               <Button
                 disabled={!isFormValid || isSubmitting}
@@ -228,7 +280,7 @@ export function PostComposer() {
                 disabled={title.length === 0 || isSubmitting}
                 onClick={handleSaveDraft}
               >
-                {isSubmitting ? "Saving…" : "Save Draft"}
+                {isSubmitting ? "Saving…" : isEditMode ? "Update Draft" : "Save Draft"}
               </Button>
             </div>
           </CardContent>

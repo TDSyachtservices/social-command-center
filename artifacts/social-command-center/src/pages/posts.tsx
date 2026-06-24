@@ -130,7 +130,7 @@ export default function Posts() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" data-testid={`btn-edit-${post.id}`}>Edit</Button>
+                        <Button variant="outline" size="sm" onClick={() => setLocation(`/create-post?edit=${post.id}`)} data-testid={`btn-edit-${post.id}`}>Edit</Button>
                         {post.status === "failed" && (
                           <Button variant="outline" size="sm" className="text-destructive border-destructive/30" data-testid={`btn-retry-${post.id}`}>
                             Retry
