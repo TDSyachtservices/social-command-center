@@ -1,6 +1,10 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
+# ─── System dependencies ───────────────────────────────────────────────────
+# imagemagick: server-side image resize pipeline
+RUN apk add --no-cache imagemagick
+
 # ─── Install dependencies ──────────────────────────────────────────────────
 FROM base AS deps
 COPY package*.json ./
@@ -24,7 +28,9 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Persistent upload directory — mount a Railway Volume at /app/uploads
+RUN mkdir -p /app/uploads
+
 EXPOSE 3001
 
-# Run migrations then start
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

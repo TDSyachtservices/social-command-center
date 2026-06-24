@@ -440,6 +440,51 @@ export async function uploadMediaIntent(body: {
   return result.ok ? result.data : null;
 }
 
+export interface UploadFileVersion {
+  id: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+  url: string;
+  qualityScore: number | null;
+  qualityScoreLabel: string | null;
+}
+
+export interface UploadFileResult {
+  assetId: string;
+  originalUrl: string;
+  versions: UploadFileVersion[];
+}
+
+/**
+ * Upload a file to the server for processing.
+ * The file is read as base64 and sent as JSON — no multipart form needed.
+ * The server runs ImageMagick to produce per-platform resized versions and
+ * returns the full version manifest once processing completes.
+ */
+export async function uploadFile(
+  assetId: string,
+  file: File,
+): Promise<UploadFileResult | null> {
+  // Read the file as a base64 data-URL, then strip the header prefix.
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const result = await apiFetch<UploadFileResult>(`/api/media/${assetId}/upload-file`, {
+    method: "POST",
+    body: JSON.stringify({ fileData: base64, mimeType: file.type, fileName: file.name }),
+  });
+  return result.ok ? result.data : null;
+}
+
 // ─── AI ───────────────────────────────────────────────────────────────────────
 
 export async function generateCaption(body: {

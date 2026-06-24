@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { UploadCloud, Image as ImageIcon, X, ChevronDown, ChevronUp, Library, Film } from "lucide-react";
-import { uploadMediaIntent } from "@/lib/api";
+import { uploadMediaIntent, uploadFile } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Link } from "wouter";
@@ -155,7 +155,17 @@ export function MediaUploadCard({ onMediaSelect }: MediaUploadCardProps) {
           originalHeight: dims.height,
           previewUrl: blobUrl,
         });
-        toast({ title: "Media saved to library", description: `${file.name} is now in your Media Library.` });
+        toast({ title: "Media saved to library", description: `Processing platform versions…` });
+
+        // Fire-and-forget: upload the actual bytes and generate resized versions.
+        uploadFile(result.assetId, file).then((processed) => {
+          if (processed && processed.versions.length > 0) {
+            toast({
+              title: "Platform versions ready",
+              description: `${processed.versions.length} resized versions generated for ${file.name}.`,
+            });
+          }
+        }).catch(() => {/* server unreachable — silent; blob preview still works */});
       } else {
         toast({ title: "Media attached", description: "Could not reach the API — file attached to this post only.", variant: "destructive" });
       }

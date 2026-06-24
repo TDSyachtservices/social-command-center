@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import * as path from "path";
 import { logger } from "./utils/logger.js";
 import { sendError } from "./utils/response.js";
 import { AppError } from "./utils/errors.js";
@@ -62,7 +63,8 @@ app.use(
 );
 
 // ─── Body parsing ─────────────────────────────────────────────────────────────
-app.use(express.json({ limit: "10mb" }));
+// 50 MB to accommodate base64-encoded image uploads (~37 MB raw before encoding)
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Request logging ─────────────────────────────────────────────────────────
@@ -72,6 +74,10 @@ app.use(
     autoLogging: { ignore: (req) => req.url === "/api/health" },
   }),
 );
+
+// ─── Static uploads ──────────────────────────────────────────────────────────
+// Serves files written by the media resize pipeline at /api/uploads/<assetId>/
+app.use("/api/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use("/api/health", healthRouter);

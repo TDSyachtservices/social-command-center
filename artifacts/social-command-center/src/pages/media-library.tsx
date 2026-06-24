@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
-import { listMedia, uploadMediaIntent } from "@/lib/api";
+import { listMedia, uploadMediaIntent, uploadFile } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -126,21 +126,51 @@ export default function MediaLibrary() {
         return;
       }
       const previewUrl = URL.createObjectURL(file);
+      const mediaType = file.type.startsWith("video/") ? "video" : "image";
       const newAsset: DisplayAsset = {
         id: result.assetId,
         originalFileName: file.name,
-        originalFileType: file.type.startsWith("video/") ? "video" : "image",
+        originalFileType: mediaType,
         originalSizeBytes: file.size,
         originalWidth: width,
         originalHeight: height,
         uploadedAt: new Date().toISOString(),
-        processingStatus: "uploaded",
+        processingStatus: "processing",
         generatedVersions: [],
         previewUrl,
       };
       setAssets((prev) => [newAsset, ...prev]);
       setShowUpload(false);
-      toast({ title: "Media uploaded", description: `${file.name} added to your library.` });
+      toast({ title: "Media uploaded", description: `Processing platform versions for ${file.name}…` });
+
+      // Upload the actual bytes for server-side ImageMagick processing.
+      uploadFile(result.assetId, file).then((processed) => {
+        if (processed) {
+          setAssets((prev) =>
+            prev.map((a) =>
+              a.id === result.assetId
+                ? {
+                    ...a,
+                    processingStatus: "ready",
+                    generatedVersions: processed.versions.map((v) => ({
+                      platform: v.platform,
+                      processingStatus: "complete",
+                      qualityScore: v.qualityScoreLabel ?? "",
+                    })),
+                  }
+                : a,
+            ),
+          );
+          toast({
+            title: "Platform versions ready",
+            description: `${processed.versions.length} versions generated for ${file.name}.`,
+          });
+        }
+      }).catch(() => {
+        setAssets((prev) =>
+          prev.map((a) => (a.id === result.assetId ? { ...a, processingStatus: "uploaded" } : a)),
+        );
+      });
     } catch {
       toast({ title: "Upload error", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
