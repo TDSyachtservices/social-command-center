@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
-import { getMediaAsset, rescoreMedia } from "@/lib/api";
+import { getMediaAsset, scoreImageWithAi, patchVersionScore } from "@/lib/api";
 import type { ApiMediaVersion } from "@/lib/api";
 import { ALL_PRESETS } from "@/lib/mediaPresets";
 import { Button } from "@/components/ui/button";
@@ -108,26 +108,47 @@ export default function MediaOptimizer() {
     if (!asset) return;
     setIsRescoring(true);
     try {
-      const result = await rescoreMedia(asset.id);
-      if (!result) {
-        toast({ title: "Rescore failed", description: "Could not reach the API.", variant: "destructive" });
+      // Score each displayed version: Replit api-server fetches the image and
+      // calls GPT vision (it has access to the OpenAI proxy), then we PATCH
+      // the result back to Railway so it's persisted.
+      const versionsToScore = asset.allVersions.filter((v) => v.publicUrl);
+      if (versionsToScore.length === 0) {
+        toast({ title: "Nothing to score", description: "No versions with a public URL found.", variant: "destructive" });
         return;
       }
-      // Merge updated labels back into displayedVersions and allVersions.
-      const labelMap = new Map(result.versions.map((v) => [v.id, v]));
+
+      let scored = 0;
+      const updates = new Map<string, { qualityScoreLabel: string; qualityScoreReason: string }>();
+
+      for (const v of versionsToScore) {
+        if (!v.publicUrl) continue;
+        const result = await scoreImageWithAi({
+          imageUrl: v.publicUrl,
+          platform: v.platform,
+          placement: v.placement,
+          width: v.width,
+          height: v.height,
+        });
+        if (result) {
+          await patchVersionScore(v.id, result);
+          updates.set(v.id, { qualityScoreLabel: result.label, qualityScoreReason: result.reason });
+          scored++;
+        }
+      }
+
+      // Merge updated labels back into state.
       const mergeVersion = (v: ApiMediaVersion): ApiMediaVersion => {
-        const updated = labelMap.get(v.id);
-        return updated
-          ? { ...v, qualityScoreLabel: updated.qualityScoreLabel, qualityScoreReason: updated.qualityScoreReason }
-          : v;
+        const u = updates.get(v.id);
+        return u ? { ...v, qualityScoreLabel: u.qualityScoreLabel, qualityScoreReason: u.qualityScoreReason } : v;
       };
       setDisplayedVersions((prev) => prev.map(mergeVersion));
       setAsset((prev) =>
         prev ? { ...prev, allVersions: prev.allVersions.map(mergeVersion) } : prev,
       );
+
       toast({
         title: "AI scoring complete",
-        description: `Scored ${result.scored} version${result.scored !== 1 ? "s" : ""} using GPT vision.`,
+        description: `Scored ${scored} of ${versionsToScore.length} version${versionsToScore.length !== 1 ? "s" : ""} using GPT vision.`,
       });
     } finally {
       setIsRescoring(false);

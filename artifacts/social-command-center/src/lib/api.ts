@@ -442,21 +442,53 @@ export async function processMedia(assetId: string): Promise<boolean> {
   return result.ok;
 }
 
-export interface RescoreResult {
-  assetId: string;
-  scored: number;
-  versions: Array<{
-    id: string;
-    platform: string;
-    placement: string;
-    qualityScoreLabel: string | null;
-    qualityScoreReason: string | null;
-  }>;
+export interface AiScoreResult {
+  label: "Excellent" | "Good" | "Needs Review" | "Poor";
+  score: number;
+  reason: string;
 }
 
-export async function rescoreMedia(assetId: string): Promise<RescoreResult | null> {
-  const result = await apiFetch<RescoreResult>(`/api/media/${assetId}/rescore`, { method: "POST" });
-  return result.ok ? result.data : null;
+/**
+ * Score a single cropped image version using GPT vision via the Replit api-server proxy.
+ * The Replit server has access to the OpenAI integration; Railway does not.
+ */
+export async function scoreImageWithAi(params: {
+  imageUrl: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+}): Promise<AiScoreResult | null> {
+  try {
+    const res = await fetch("/api/ai/score-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as AiScoreResult;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write an AI quality score back to a specific version on the Railway server.
+ */
+export async function patchVersionScore(
+  versionId: string,
+  score: AiScoreResult,
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/media/version/${versionId}/score`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      qualityScore: score.score,
+      qualityScoreLabel: score.label,
+      qualityScoreReason: score.reason,
+    }),
+  });
+  return result.ok;
 }
 
 export interface UploadIntentResult {
