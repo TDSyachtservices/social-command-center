@@ -509,12 +509,8 @@ export default function MediaOptimizer() {
       setDisplayedVersions(matched.length > 0 ? matched : asset!.allVersions);
 
       if (missing.length > 0 && matched.length === 0) {
-        toast({
-          title: "Versions not yet generated",
-          description:
-            "Upload this asset from the Media Library first so the server can generate resized versions.",
-          variant: "destructive",
-        });
+        // No server versions at all — generate them now instead of showing an error.
+        void handleProcessImage();
       } else if (missing.length > 0) {
         toast({
           title: `${matched.length} version${matched.length !== 1 ? "s" : ""} ready`,
