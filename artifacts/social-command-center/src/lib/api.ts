@@ -381,6 +381,24 @@ export async function updateSettings(key: string, value: unknown): Promise<boole
 
 // ─── Media ────────────────────────────────────────────────────────────────────
 
+export interface ApiMediaVersion {
+  id: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+  aspectRatio: string;
+  format: string;
+  mimeType: string;
+  publicUrl: string | null;
+  storageKey: string | null;
+  processingStatus: string;
+  cropMode: string;
+  qualityScore: number | null;
+  qualityScoreLabel: string | null;
+  validationStatus: string;
+}
+
 export interface ApiMediaAsset {
   id: string;
   originalFileName: string;
@@ -389,9 +407,11 @@ export interface ApiMediaAsset {
   originalSizeBytes: number;
   originalWidth: number | null;
   originalHeight: number | null;
+  originalPublicUrl: string | null;
   processingStatus: string;
   validationStatus: string;
   createdAt: string;
+  versions?: ApiMediaVersion[];
 }
 
 export async function listMedia(params?: {
