@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
-import { listMedia } from "@/lib/api";
+import { listMedia, uploadMediaIntent } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { mockAnalyzeMedia } from "@/lib/mockActions";
 
 type DisplayAsset = {
   id: string;
@@ -26,6 +26,7 @@ type DisplayAsset = {
   uploadedAt: string;
   processingStatus: string;
   generatedVersions: Array<{ platform: string; processingStatus: string; qualityScore: string }>;
+  previewUrl?: string;
 };
 
 const STORAGE_KEY = "scc:media-library:v1";
@@ -49,6 +50,30 @@ const persist = (assets: DisplayAsset[]) => {
   }
 };
 
+function measureImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    if (file.type.startsWith("video/")) {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        resolve({ width: video.videoWidth, height: video.videoHeight });
+        URL.revokeObjectURL(url);
+      };
+      video.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url); };
+      video.src = url;
+    } else {
+      const img = new Image();
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url); };
+      img.src = url;
+    }
+  });
+}
+
 export default function MediaLibrary() {
   const [filter, setFilter] = useState("All");
   const [isUploading, setIsUploading] = useState(false);
@@ -56,6 +81,7 @@ export default function MediaLibrary() {
   const [, setLocation] = useLocation();
   const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? []);
   const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (loadPersisted() !== null) return; // keep the user's saved library (with their deletions/duplicates)
@@ -87,11 +113,38 @@ export default function MediaLibrary() {
     if (!file) return;
     setIsUploading(true);
     try {
-      await mockAnalyzeMedia(file);
-      setLocation("/media-optimizer");
+      const { width, height } = await measureImageDimensions(file);
+      const result = await uploadMediaIntent({
+        fileName: file.name,
+        mimeType: file.type,
+        fileSizeBytes: file.size,
+        originalWidth: width || undefined,
+        originalHeight: height || undefined,
+      });
+      if (!result) {
+        toast({ title: "Upload failed", description: "Could not reach the API. Check your connection.", variant: "destructive" });
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      const newAsset: DisplayAsset = {
+        id: result.assetId,
+        originalFileName: file.name,
+        originalFileType: file.type.startsWith("video/") ? "video" : "image",
+        originalSizeBytes: file.size,
+        originalWidth: width,
+        originalHeight: height,
+        uploadedAt: new Date().toISOString(),
+        processingStatus: "uploaded",
+        generatedVersions: [],
+        previewUrl,
+      };
+      setAssets((prev) => [newAsset, ...prev]);
+      setShowUpload(false);
+      toast({ title: "Media uploaded", description: `${file.name} added to your library.` });
+    } catch {
+      toast({ title: "Upload error", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsUploading(false);
-      setShowUpload(false);
     }
   };
 
@@ -210,8 +263,14 @@ export default function MediaLibrary() {
 
           return (
             <div key={asset.id} className="border rounded-lg overflow-hidden bg-card text-card-foreground flex flex-col shadow-sm" data-testid={`card-asset-${asset.id}`}>
-              <div className="aspect-video bg-muted flex items-center justify-center relative">
-                {asset.originalFileType === "video" ? (
+              <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+                {asset.previewUrl ? (
+                  asset.originalFileType === "video" ? (
+                    <video src={asset.previewUrl} className="w-full h-full object-cover" muted playsInline />
+                  ) : (
+                    <img src={asset.previewUrl} alt={asset.originalFileName} className="w-full h-full object-cover" />
+                  )
+                ) : asset.originalFileType === "video" ? (
                   <Film className="w-12 h-12 text-muted-foreground opacity-50" />
                 ) : (
                   <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />

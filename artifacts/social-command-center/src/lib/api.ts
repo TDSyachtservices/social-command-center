@@ -421,6 +421,25 @@ export async function processMedia(assetId: string): Promise<boolean> {
   return result.ok;
 }
 
+export interface UploadIntentResult {
+  assetId: string;
+  uploadUrl: string;
+}
+
+export async function uploadMediaIntent(body: {
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  originalWidth?: number;
+  originalHeight?: number;
+}): Promise<UploadIntentResult | null> {
+  const result = await apiFetch<UploadIntentResult>("/api/media/upload-intent", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
 // ─── AI ───────────────────────────────────────────────────────────────────────
 
 export async function generateCaption(body: {
