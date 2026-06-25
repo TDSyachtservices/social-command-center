@@ -4,6 +4,9 @@ import { prisma } from "../db/prisma.js";
 import { sendSuccess } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
+import { decrypt } from "../utils/crypto.js";
+import { getComments } from "../adapters/facebook.js";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -65,6 +68,75 @@ router.get("/sync-logs", async (_req: Request, res: Response) => {
     take: 100,
   });
   sendSuccess(res, logs);
+});
+
+// ─── Real Facebook comment sync ───────────────────────────────────────────────
+router.post("/sync", async (_req: Request, res: Response) => {
+  const accounts = await prisma.socialAccount.findMany({
+    where: { connectionStatus: "connected", platform: "FACEBOOK", commentReadCapability: true },
+  });
+
+  let totalSynced = 0;
+  let totalNew = 0;
+  const results: Array<{ accountId: string; postId: string; synced: number; error?: string }> = [];
+
+  for (const account of accounts) {
+    if (!account.tokenEncrypted) continue;
+
+    let accessToken: string;
+    try {
+      accessToken = decrypt(account.tokenEncrypted);
+    } catch {
+      logger.warn({ accountId: account.id }, "Token decryption failed during inbox sync");
+      continue;
+    }
+
+    const publishedPlatforms = await prisma.scheduledPostPlatform.findMany({
+      where: { accountId: account.id, platform: "FACEBOOK", status: "PUBLISHED", externalPostId: { not: null } },
+      include: { scheduledPost: { select: { title: true, masterCaption: true } } },
+    });
+
+    for (const row of publishedPlatforms) {
+      const externalPostId = row.externalPostId!;
+      try {
+        const comments = await getComments({ accessToken, postId: externalPostId });
+        for (const c of comments) {
+          const existing = await prisma.socialComment.findFirst({
+            where: { externalCommentId: c.externalId },
+          });
+          if (!existing) {
+            await prisma.socialComment.create({
+              data: {
+                platform: "FACEBOOK",
+                accountId: account.id,
+                accountName: account.accountName,
+                commenterName: c.commenterName,
+                commentText: c.text,
+                originalPostTitle: row.scheduledPost.title,
+                originalPostCaption: row.scheduledPost.masterCaption,
+                externalCommentId: c.externalId,
+                timestamp: new Date(c.timestamp),
+              },
+            });
+            totalNew++;
+          }
+          totalSynced++;
+        }
+        results.push({ accountId: account.id, postId: externalPostId, synced: comments.length });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        logger.error({ accountId: account.id, externalPostId, err }, "Failed to fetch Facebook comments");
+        results.push({ accountId: account.id, postId: externalPostId, synced: 0, error: msg });
+      }
+    }
+
+    await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
+    await prisma.socialInboxSyncLog.create({
+      data: { platform: "FACEBOOK", accountId: account.id, actionType: "comment_sync", status: "success" },
+    });
+  }
+
+  sendSuccess(res, { accounts: accounts.length, totalSynced, totalNew, results });
 });
 
 // ─── Trigger mock sync ────────────────────────────────────────────────────────
