@@ -2,8 +2,11 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 # ─── System dependencies ───────────────────────────────────────────────────
-# imagemagick: server-side image resize pipeline
-RUN apk add --no-cache imagemagick
+# imagemagick: server-side image resize pipeline.
+# On Alpine the base `imagemagick` package only bundles PNG/GIF/BMP coders;
+# JPEG/WebP/TIFF support ships as separate codec subpackages. Without them
+# ImageMagick fails with "no decode delegate for this image format" on .jpg.
+RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick-tiff
 
 # ─── Install dependencies ──────────────────────────────────────────────────
 FROM base AS deps
