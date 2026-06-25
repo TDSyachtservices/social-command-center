@@ -105,7 +105,7 @@ export async function cropToSpec(
   }
 
   try {
-    await execFileAsync("convert", args);
+    await execFileAsync("magick", args);
     const { size } = fs.statSync(tmpPath);
     fs.renameSync(tmpPath, outputPath);
     return size;
