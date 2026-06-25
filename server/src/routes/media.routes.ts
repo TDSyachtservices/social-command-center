@@ -5,7 +5,7 @@ import * as path from "path";
 import { prisma } from "../db/prisma.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
-import { notFound } from "../utils/errors.js";
+import { notFound, internal } from "../utils/errors.js";
 import {
   processImage,
   cropToSpec,
@@ -300,7 +300,10 @@ router.post(
         where: { id },
         data: { processingStatus: "FAILED" },
       });
-      throw err;
+      logger.error(err, "Image processing failed during upload-file");
+      throw internal(
+        `Image processing failed: ${(err as Error).message ?? "unknown error"}`,
+      );
     }
   },
 );
@@ -368,7 +371,10 @@ router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) 
       where: { id },
       data: { processingStatus: "FAILED" },
     });
-    throw err;
+    logger.error(err, "Image processing failed during reprocess");
+    throw internal(
+      `Image processing failed: ${(err as Error).message ?? "unknown error"}`,
+    );
   }
 });
 

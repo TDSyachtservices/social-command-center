@@ -5,6 +5,47 @@ import * as path from "path";
 
 const execFileAsync = promisify(execFile);
 
+// ImageMagick 7 exposes the unified `magick` binary; ImageMagick 6 (and some
+// distro packages, including certain Alpine builds) only ship the legacy
+// `convert` command. We don't know which is present in a given environment
+// (local vs. Alpine on Railway), so resolve the binary once on first use by
+// probing both, then cache the winner.
+let resolvedMagickCmd: string | null = null;
+
+async function resolveMagickCmd(): Promise<string> {
+  if (resolvedMagickCmd) return resolvedMagickCmd;
+  const errors: string[] = [];
+  for (const cmd of ["magick", "convert"]) {
+    try {
+      await execFileAsync(cmd, ["-version"]);
+      resolvedMagickCmd = cmd;
+      return cmd;
+    } catch (err) {
+      errors.push(`${cmd}: ${(err as Error).message}`);
+    }
+  }
+  throw new Error(
+    `ImageMagick not found on PATH (tried magick, convert) — ${errors.join("; ")}`,
+  );
+}
+
+/**
+ * Run ImageMagick with the given args, automatically using whichever binary
+ * (`magick` or `convert`) exists in this environment. On failure the captured
+ * ImageMagick stderr is folded into the thrown error message so the real cause
+ * surfaces in logs and API responses instead of a bare non-zero exit code.
+ */
+async function runImageMagick(args: string[]): Promise<void> {
+  const cmd = await resolveMagickCmd();
+  try {
+    await execFileAsync(cmd, args);
+  } catch (err) {
+    const e = err as { stderr?: string; message?: string };
+    const detail = (e.stderr ?? e.message ?? "").toString().trim();
+    throw new Error(`ImageMagick (${cmd}) failed: ${detail || "unknown error"}`);
+  }
+}
+
 export interface PlatformSpec {
   platform: string;
   placement: string;
@@ -105,7 +146,7 @@ export async function cropToSpec(
   }
 
   try {
-    await execFileAsync("magick", args);
+    await runImageMagick(args);
     const { size } = fs.statSync(tmpPath);
     fs.renameSync(tmpPath, outputPath);
     return size;

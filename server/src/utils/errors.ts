@@ -38,3 +38,7 @@ export function unauthorized(message = "Unauthorized"): AppError {
 export function forbidden(message = "Forbidden"): AppError {
   return new AppError(ErrorCodes.FORBIDDEN, message, 403);
 }
+
+export function internal(message: string, details?: unknown): AppError {
+  return new AppError(ErrorCodes.INTERNAL_ERROR, message, 500, details);
+}
