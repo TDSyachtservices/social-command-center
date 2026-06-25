@@ -19,6 +19,16 @@ import { logger } from "../utils/logger.js";
 
 const router = Router();
 
+// Build the client-facing message for an image-processing failure. The full
+// error is always logged server-side; we only echo the underlying ImageMagick
+// detail outside production so we don't leak internal filesystem paths or tool
+// diagnostics (e.g. for attacker-supplied files) in public API responses.
+function processingErrorMessage(err: unknown): string {
+  if (process.env.NODE_ENV === "production") return "Image processing failed.";
+  const detail = err instanceof Error ? err.message : "unknown error";
+  return `Image processing failed: ${detail}`;
+}
+
 /** Absolute public base for upload URLs (Railway domain in production). */
 function buildPublicBase(): string {
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
@@ -301,9 +311,7 @@ router.post(
         data: { processingStatus: "FAILED" },
       });
       logger.error(err, "Image processing failed during upload-file");
-      throw internal(
-        `Image processing failed: ${(err as Error).message ?? "unknown error"}`,
-      );
+      throw internal(processingErrorMessage(err));
     }
   },
 );
@@ -372,9 +380,7 @@ router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) 
       data: { processingStatus: "FAILED" },
     });
     logger.error(err, "Image processing failed during reprocess");
-    throw internal(
-      `Image processing failed: ${(err as Error).message ?? "unknown error"}`,
-    );
+    throw internal(processingErrorMessage(err));
   }
 });
 
