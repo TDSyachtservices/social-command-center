@@ -74,7 +74,7 @@ router.get("/sync-logs", async (_req: Request, res: Response) => {
 router.post("/sync", async (_req: Request, res: Response) => {
   // Backfill: rename any legacy "Unknown" rows to "Facebook User"
   await prisma.socialComment.updateMany({
-    where: { platform: "FACEBOOK", OR: [{ commenterName: "Unknown" }, { commenterName: null }] },
+    where: { platform: "FACEBOOK", commenterName: "Unknown" },
     data: { commenterName: "Facebook User" },
   });
 
