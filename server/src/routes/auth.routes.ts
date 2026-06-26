@@ -11,7 +11,7 @@ import {
 
 const router = Router();
 
-const FB_SCOPES = ["pages_manage_posts", "pages_read_engagement", "pages_show_list"].join(",");
+const FB_SCOPES = ["pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "pages_show_list"].join(",");
 
 function getRedirectUri(): string {
   const base = (process.env.API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
@@ -73,7 +73,9 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
     // The user can deselect permissions on the consent screen, so this is the source of truth.
     const grantedScopes = await getGrantedPermissions(longToken);
     const canPost = grantedScopes.includes("pages_manage_posts");
-    const canReadComments = grantedScopes.includes("pages_read_engagement");
+    const canReadComments =
+      grantedScopes.includes("pages_read_user_content") ||
+      grantedScopes.includes("pages_read_engagement");
     logger.info({ grantedScopes, canPost, canReadComments }, "Facebook granted permissions");
 
     // Step 3: list all Facebook Pages this user manages
