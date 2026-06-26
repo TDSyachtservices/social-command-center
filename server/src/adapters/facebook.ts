@@ -151,6 +151,42 @@ export async function publishPost(opts: {
   return { success: true, externalPostId: data.id, rawResponse: data };
 }
 
+// ─── Page feed ─────────────────────────────────────────────────────────────────
+
+export interface PagePost {
+  externalPostId: string;
+  message: string;
+  createdTime: string;
+}
+
+export async function getPagePosts(opts: {
+  accessToken: string;
+  pageId: string;
+  limit?: number;
+}): Promise<PagePost[]> {
+  const url = new URL(`${GRAPH}/${opts.pageId}/posts`);
+  url.searchParams.set("access_token", opts.accessToken);
+  url.searchParams.set("fields", "id,message,created_time");
+  url.searchParams.set("limit", String(opts.limit ?? 50));
+
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  const data = (await res.json()) as {
+    data?: Array<{ id: string; message?: string; created_time: string }>;
+    error?: { message: string };
+  };
+
+  if (data.error) {
+    logger.warn({ pageId: opts.pageId, error: data.error.message }, "Facebook getPagePosts error");
+    return [];
+  }
+
+  return (data.data ?? []).map((p) => ({
+    externalPostId: p.id,
+    message: p.message ?? "",
+    createdTime: p.created_time,
+  }));
+}
+
 // ─── Comments ──────────────────────────────────────────────────────────────────
 
 export async function getComments(opts: {

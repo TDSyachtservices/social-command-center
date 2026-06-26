@@ -5,7 +5,7 @@ import { sendSuccess } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { decrypt } from "../utils/crypto.js";
-import { getComments } from "../adapters/facebook.js";
+import { getComments, getPagePosts } from "../adapters/facebook.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
@@ -91,15 +91,21 @@ router.post("/sync", async (_req: Request, res: Response) => {
       continue;
     }
 
-    const publishedPlatforms = await prisma.scheduledPostPlatform.findMany({
-      where: { accountId: account.id, platform: "FACEBOOK", status: "PUBLISHED", externalPostId: { not: null } },
-      include: { scheduledPost: { select: { title: true, masterCaption: true } } },
-    });
+    const pagePosts = await getPagePosts({ accessToken, pageId: account.accountId, limit: 50 });
 
-    for (const row of publishedPlatforms) {
-      const externalPostId = row.externalPostId!;
+    const appPostMap = await prisma.scheduledPostPlatform
+      .findMany({
+        where: { accountId: account.id, platform: "FACEBOOK", status: "PUBLISHED", externalPostId: { not: null } },
+        include: { scheduledPost: { select: { title: true } } },
+      })
+      .then((rows) =>
+        Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
+      );
+
+    for (const post of pagePosts) {
+      const postTitle = appPostMap[post.externalPostId] ?? (post.message.slice(0, 60) || "Facebook post");
       try {
-        const comments = await getComments({ accessToken, postId: externalPostId });
+        const comments = await getComments({ accessToken, postId: post.externalPostId });
         for (const c of comments) {
           const existing = await prisma.socialComment.findFirst({
             where: { externalCommentId: c.externalId },
@@ -112,8 +118,8 @@ router.post("/sync", async (_req: Request, res: Response) => {
                 accountName: account.accountName,
                 commenterName: c.commenterName,
                 commentText: c.text,
-                originalPostTitle: row.scheduledPost.title,
-                originalPostCaption: row.scheduledPost.masterCaption,
+                originalPostTitle: postTitle,
+                originalPostCaption: post.message,
                 externalCommentId: c.externalId,
                 timestamp: new Date(c.timestamp),
               },
@@ -122,11 +128,11 @@ router.post("/sync", async (_req: Request, res: Response) => {
           }
           totalSynced++;
         }
-        results.push({ accountId: account.id, postId: externalPostId, synced: comments.length });
+        results.push({ accountId: account.id, postId: post.externalPostId, synced: comments.length });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
-        logger.error({ accountId: account.id, externalPostId, err }, "Failed to fetch Facebook comments");
-        results.push({ accountId: account.id, postId: externalPostId, synced: 0, error: msg });
+        logger.error({ accountId: account.id, postId: post.externalPostId, err }, "Failed to fetch Facebook comments");
+        results.push({ accountId: account.id, postId: post.externalPostId, synced: 0, error: msg });
       }
     }
 
