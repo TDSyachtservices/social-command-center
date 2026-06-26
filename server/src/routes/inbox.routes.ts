@@ -5,7 +5,7 @@ import { sendSuccess } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { decrypt } from "../utils/crypto.js";
-import { getComments, getPagePosts, getPageFeedWithComments } from "../adapters/facebook.js";
+import { getComments, getPagePosts, getPageFeedWithComments, replyToComment } from "../adapters/facebook.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
@@ -367,20 +367,17 @@ router.post(
 
       if (token) {
         try {
-          const fbUrl = `https://graph.facebook.com/v19.0/${existing.externalCommentId}/comments`;
-          const fbRes = await fetch(fbUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: body.replyText, access_token: token }),
-            signal: AbortSignal.timeout(15_000),
+          const result = await replyToComment({
+            accessToken: token,
+            commentId: existing.externalCommentId,
+            message: body.replyText,
           });
-          const fbData = await fbRes.json() as { id?: string; error?: { message?: string } };
-          if (!fbRes.ok || fbData.error) {
-            fbError = fbData.error?.message ?? `HTTP ${fbRes.status}`;
+          if (result.success) {
+            fbStatus = "sent";
+          } else {
+            fbError = result.errorMessage ?? "Unknown Facebook error";
             logger.warn({ fbError, commentId: id }, "Facebook reply failed");
             fbStatus = "failed";
-          } else {
-            fbStatus = "sent";
           }
         } catch (err) {
           fbError = String(err);
@@ -388,7 +385,7 @@ router.post(
           fbStatus = "failed";
         }
       } else {
-        fbError = "No access token available";
+        fbError = "No access token — reconnect your Facebook page in Settings";
         fbStatus = "failed";
       }
     } else {
