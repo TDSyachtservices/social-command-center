@@ -11,7 +11,7 @@ import {
 
 const router = Router();
 
-const FB_SCOPES = ["pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "pages_show_list"].join(",");
+const FB_SCOPES = ["pages_manage_posts", "pages_manage_comments", "pages_read_engagement", "pages_read_user_content", "pages_show_list"].join(",");
 
 function getRedirectUri(): string {
   const base = (process.env.API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
@@ -73,6 +73,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
     // The user can deselect permissions on the consent screen, so this is the source of truth.
     const grantedScopes = await getGrantedPermissions(longToken);
     const canPost = grantedScopes.includes("pages_manage_posts");
+    const canReplyComments = grantedScopes.includes("pages_manage_comments");
     const canReadComments =
       grantedScopes.includes("pages_read_user_content") ||
       grantedScopes.includes("pages_read_engagement");
@@ -107,14 +108,14 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             tokenExpiresAt: expiresAt,
             postingCapability: canPost,
             commentReadCapability: canReadComments,
-            commentReplyCapability: canPost,
+            commentReplyCapability: canReplyComments,
             moderationCapability: canPost,
             lastSync: new Date(),
             scopes: grantedScopes,
             metadata: { category: page.category },
           },
         });
-        logger.info({ pageId: page.id, name: page.name, canPost }, "Facebook page token refreshed");
+        logger.info({ pageId: page.id, name: page.name, canPost, canReplyComments }, "Facebook page token refreshed");
       } else {
         await prisma.socialAccount.create({
           data: {
@@ -126,7 +127,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             tokenExpiresAt: expiresAt,
             postingCapability: canPost,
             commentReadCapability: canReadComments,
-            commentReplyCapability: canPost,
+            commentReplyCapability: canReplyComments,
             moderationCapability: canPost,
             lastSync: new Date(),
             scopes: grantedScopes,
