@@ -145,6 +145,30 @@ router.post("/sync", async (_req: Request, res: Response) => {
   sendSuccess(res, { accounts: accounts.length, totalSynced, totalNew, results });
 });
 
+// ─── Debug: raw Facebook comment response for one post ────────────────────────
+router.get("/sync-debug", async (_req: Request, res: Response) => {
+  const account = await prisma.socialAccount.findFirst({
+    where: { connectionStatus: "connected", platform: "FACEBOOK" },
+  });
+  if (!account?.tokenEncrypted) {
+    sendSuccess(res, { error: "No connected Facebook account" });
+    return;
+  }
+  const accessToken = decrypt(account.tokenEncrypted);
+  const posts = await getPagePosts({ accessToken, pageId: account.accountId, limit: 3 });
+  const debug = await Promise.all(
+    posts.map(async (p) => {
+      const url = new URL(`https://graph.facebook.com/v19.0/${p.externalPostId}/comments`);
+      url.searchParams.set("access_token", accessToken);
+      url.searchParams.set("fields", "id,from,message,created_time");
+      const fbRes = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000) });
+      const raw = await fbRes.json();
+      return { postId: p.externalPostId, status: fbRes.status, raw };
+    }),
+  );
+  sendSuccess(res, debug);
+});
+
 // ─── Trigger mock sync ────────────────────────────────────────────────────────
 router.post("/sync-mock", async (_req: Request, res: Response) => {
   const accounts = await prisma.socialAccount.findMany({

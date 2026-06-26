@@ -197,10 +197,17 @@ export async function getComments(opts: {
   url.searchParams.set("access_token", opts.accessToken);
   url.searchParams.set("fields", "id,from,message,created_time");
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
   const data = (await res.json()) as {
     data?: Array<{ id: string; from?: { name: string }; message: string; created_time: string }>;
+    error?: { message: string; code: number; type: string };
   };
+
+  if (data.error) {
+    logger.warn({ postId: opts.postId, fbError: data.error }, "Facebook getComments error");
+    return [];
+  }
+
   return (data.data ?? []).map((c) => ({
     externalId: c.id,
     commenterName: c.from?.name ?? "Unknown",
