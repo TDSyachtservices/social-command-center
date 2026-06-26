@@ -138,7 +138,7 @@ router.post("/sync", async (_req: Request, res: Response) => {
   sendSuccess(res, { accounts: accounts.length, totalSynced, totalNew, results });
 });
 
-// ─── Debug: raw Facebook feed+comments response ───────────────────────────────
+// ─── Debug: inspect token + try feed endpoint ────────────────────────────────
 router.get("/sync-debug", async (_req: Request, res: Response) => {
   const account = await prisma.socialAccount.findFirst({
     where: { connectionStatus: "connected", platform: "FACEBOOK" },
@@ -148,13 +148,34 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
     return;
   }
   const accessToken = decrypt(account.tokenEncrypted);
-  const url = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/feed`);
-  url.searchParams.set("access_token", accessToken);
-  url.searchParams.set("fields", "id,message,created_time,comments{id,from,message,created_time}");
-  url.searchParams.set("limit", "3");
-  const fbRes = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  const raw = await fbRes.json();
-  sendSuccess(res, { status: fbRes.status, raw });
+
+  // Check what permissions the stored token actually has
+  const permUrl = new URL(`https://graph.facebook.com/v19.0/me/permissions`);
+  permUrl.searchParams.set("access_token", accessToken);
+  const permRes = await fetch(permUrl.toString(), { signal: AbortSignal.timeout(10_000) });
+  const permData = await permRes.json();
+
+  // Try feed without comments first
+  const feedUrl = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/feed`);
+  feedUrl.searchParams.set("access_token", accessToken);
+  feedUrl.searchParams.set("fields", "id,message,created_time");
+  feedUrl.searchParams.set("limit", "2");
+  const feedRes = await fetch(feedUrl.toString(), { signal: AbortSignal.timeout(15_000) });
+  const feedData = await feedRes.json();
+
+  // Try posts endpoint
+  const postsUrl = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/posts`);
+  postsUrl.searchParams.set("access_token", accessToken);
+  postsUrl.searchParams.set("fields", "id,message,created_time");
+  postsUrl.searchParams.set("limit", "2");
+  const postsRes = await fetch(postsUrl.toString(), { signal: AbortSignal.timeout(15_000) });
+  const postsData = await postsRes.json();
+
+  sendSuccess(res, {
+    tokenPermissions: permData,
+    feedResult: { status: feedRes.status, data: feedData },
+    postsResult: { status: postsRes.status, data: postsData },
+  });
 });
 
 // ─── Trigger mock sync ────────────────────────────────────────────────────────
