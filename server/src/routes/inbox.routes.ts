@@ -123,6 +123,14 @@ router.post("/sync", async (_req: Request, res: Response) => {
             },
           });
           totalNew++;
+        } else if (
+          c.commenterName !== "Unknown" &&
+          (existing.commenterName === "Unknown" || existing.commenterName === null)
+        ) {
+          await prisma.socialComment.update({
+            where: { id: existing.id },
+            data: { commenterName: c.commenterName },
+          });
         }
         totalSynced++;
       }

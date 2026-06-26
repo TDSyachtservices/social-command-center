@@ -203,7 +203,7 @@ export async function getPageFeedWithComments(opts: {
   url.searchParams.set("access_token", opts.accessToken);
   url.searchParams.set(
     "fields",
-    "id,message,created_time,comments{id,from,message,created_time}",
+    "id,message,created_time,comments{id,from{id,name},message,created_time}",
   );
   url.searchParams.set("limit", String(opts.limit ?? 50));
 
@@ -244,7 +244,7 @@ export async function getComments(opts: {
 }): Promise<PlatformComment[]> {
   const url = new URL(`${GRAPH}/${opts.postId}/comments`);
   url.searchParams.set("access_token", opts.accessToken);
-  url.searchParams.set("fields", "id,from,message,created_time");
+  url.searchParams.set("fields", "id,from{id,name},message,created_time");
 
   const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
   const data = (await res.json()) as {
