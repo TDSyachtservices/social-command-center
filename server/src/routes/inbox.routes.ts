@@ -125,7 +125,8 @@ router.post("/sync", async (_req: Request, res: Response) => {
           totalNew++;
         } else if (
           c.commenterName !== "Unknown" &&
-          (existing.commenterName === "Unknown" || existing.commenterName === null)
+          c.commenterName !== "Facebook User" &&
+          (existing.commenterName === "Unknown" || existing.commenterName === "Facebook User" || existing.commenterName === null)
         ) {
           await prisma.socialComment.update({
             where: { id: existing.id },
@@ -174,19 +175,32 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
     error?: { message: string; code: number };
   };
 
-  // Return the first 5 raw comments across posts so we can inspect the from field
-  const rawComments: unknown[] = [];
+  // Collect first 3 comment IDs from the nested query
+  const nestedComments: unknown[] = [];
+  const firstCommentIds: string[] = [];
   for (const p of postsData.data ?? []) {
-    for (const c of p.comments?.data ?? []) {
-      rawComments.push({ postId: p.id, comment: c });
-      if (rawComments.length >= 5) break;
+    for (const c of (p.comments?.data ?? []) as Array<{ id: string }>) {
+      nestedComments.push({ postId: p.id, comment: c });
+      firstCommentIds.push(c.id);
+      if (firstCommentIds.length >= 3) break;
     }
-    if (rawComments.length >= 5) break;
+    if (firstCommentIds.length >= 3) break;
+  }
+
+  // Try fetching the first comment directly — direct object access sometimes
+  // returns `from` even when the nested page-feed query does not
+  const directResults: unknown[] = [];
+  for (const commentId of firstCommentIds.slice(0, 2)) {
+    const directUrl = new URL(`https://graph.facebook.com/v19.0/${commentId}`);
+    directUrl.searchParams.set("access_token", accessToken);
+    directUrl.searchParams.set("fields", "id,from{id,name},user_id,message");
+    const directRes = await fetch(directUrl.toString(), { signal: AbortSignal.timeout(10_000) });
+    directResults.push({ commentId, status: directRes.status, data: await directRes.json() });
   }
 
   sendSuccess(res, {
-    tokenPermissions: permData,
-    rawComments,
+    nestedComments,
+    directFetch: directResults,
     error: postsData.error ?? null,
   });
 });

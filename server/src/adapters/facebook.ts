@@ -199,41 +199,57 @@ export async function getPageFeedWithComments(opts: {
   pageId: string;
   limit?: number;
 }): Promise<PagePostWithComments[]> {
-  const url = new URL(`${GRAPH}/${opts.pageId}/posts`);
-  url.searchParams.set("access_token", opts.accessToken);
-  url.searchParams.set(
-    "fields",
-    "id,message,created_time,comments{id,from{id,name},message,created_time}",
-  );
-  url.searchParams.set("limit", String(opts.limit ?? 50));
+  // Step 1: get posts (no embedded comments — we'll fetch comments directly per-post
+  // because the direct /{post}/comments endpoint returns `from` when the nested query does not)
+  const postsUrl = new URL(`${GRAPH}/${opts.pageId}/posts`);
+  postsUrl.searchParams.set("access_token", opts.accessToken);
+  postsUrl.searchParams.set("fields", "id,message,created_time");
+  postsUrl.searchParams.set("limit", String(opts.limit ?? 50));
 
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(20_000) });
-  const data = (await res.json()) as {
-    data?: Array<{
-      id: string;
-      message?: string;
-      created_time: string;
-      comments?: { data: Array<{ id: string; from?: { name: string }; message: string; created_time: string }> };
-    }>;
+  const postsRes = await fetch(postsUrl.toString(), { signal: AbortSignal.timeout(20_000) });
+  const postsData = (await postsRes.json()) as {
+    data?: Array<{ id: string; message?: string; created_time: string }>;
     error?: { message: string; code: number };
   };
 
-  if (data.error) {
-    logger.warn({ pageId: opts.pageId, fbError: data.error }, "Facebook getPageFeedWithComments error");
+  if (postsData.error) {
+    logger.warn({ pageId: opts.pageId, fbError: postsData.error }, "Facebook getPageFeedWithComments error");
     return [];
   }
 
-  return (data.data ?? []).map((p) => ({
-    externalPostId: p.id,
-    message: p.message ?? "",
-    createdTime: p.created_time,
-    comments: (p.comments?.data ?? []).map((c) => ({
-      externalId: c.id,
-      commenterName: c.from?.name ?? "Unknown",
-      text: c.message,
-      timestamp: c.created_time,
-    })),
-  }));
+  const results: PagePostWithComments[] = [];
+
+  // Step 2: fetch comments for each post directly (returns `from` more reliably)
+  for (const post of postsData.data ?? []) {
+    const commentsUrl = new URL(`${GRAPH}/${post.id}/comments`);
+    commentsUrl.searchParams.set("access_token", opts.accessToken);
+    commentsUrl.searchParams.set("fields", "id,from{id,name},user_id,message,created_time");
+    commentsUrl.searchParams.set("limit", "100");
+
+    const commentsRes = await fetch(commentsUrl.toString(), { signal: AbortSignal.timeout(15_000) });
+    const commentsData = (await commentsRes.json()) as {
+      data?: Array<{ id: string; from?: { id: string; name: string }; user_id?: string; message: string; created_time: string }>;
+      error?: { message: string; code: number };
+    };
+
+    if (commentsData.error) {
+      logger.warn({ postId: post.id, fbError: commentsData.error }, "Facebook getComments error");
+    }
+
+    results.push({
+      externalPostId: post.id,
+      message: post.message ?? "",
+      createdTime: post.created_time,
+      comments: (commentsData.data ?? []).map((c) => ({
+        externalId: c.id,
+        commenterName: c.from?.name ?? "Facebook User",
+        text: c.message,
+        timestamp: c.created_time,
+      })),
+    });
+  }
+
+  return results;
 }
 
 // ─── Comments ──────────────────────────────────────────────────────────────────
