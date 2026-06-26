@@ -1,9 +1,15 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import OpenAI from "openai";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody } from "../utils/validation.js";
 import { prisma } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
+
+const openai = new OpenAI({
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "placeholder",
+});
 
 const router = Router();
 
@@ -118,8 +124,9 @@ const generateReplySchema = z.object({
   commentText: z.string().min(1).max(5000),
   commenterName: z.string().max(200).optional(),
   platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]).optional(),
-  tone: z.enum(["professional", "friendly", "empathetic", "apologetic"]).default("professional"),
-  additionalContext: z.string().max(1000).optional(),
+  tone: z.enum(["professional", "friendly", "helpful", "sales", "technical"]).default("professional"),
+  postTitle: z.string().max(500).optional(),
+  postCaption: z.string().max(2000).optional(),
 });
 
 router.post(
@@ -128,12 +135,45 @@ router.post(
   async (req: Request, res: Response) => {
     const body = req.body as z.infer<typeof generateReplySchema>;
 
-    const mockReply =
-      `Thank you for your comment${body.commenterName ? `, ${body.commenterName}` : ""}! ` +
-      `We appreciate your feedback. Our team will get back to you shortly. ` +
-      `Feel free to reach out at sales@marinedeckingco.com for more information. ⚓`;
+    const toneInstructions: Record<string, string> = {
+      professional: "professional and polished",
+      friendly: "warm, friendly, and conversational",
+      helpful: "helpful, informative, and solution-focused",
+      sales: "sales-oriented, highlighting value and encouraging next steps",
+      technical: "technical and detailed, showing expertise",
+    };
 
-    sendSuccess(res, { reply: mockReply, model: "mock", mock: true });
+    const systemPrompt = `You are a social media manager for TDS Yacht Services, a marine decking and yacht services company. 
+Write concise, on-brand replies to customer comments on social media posts.
+Tone: ${toneInstructions[body.tone] ?? "professional"}.
+Keep replies under 150 words. Do not use hashtags. Do not be overly formal or use filler phrases like "I hope this message finds you well".
+If relevant, you can mention contacting the sales team at sales@tdssupplyco.com.`;
+
+    const userPrompt = [
+      body.postTitle ? `Post: "${body.postTitle}"` : null,
+      body.postCaption ? `Post caption: "${body.postCaption}"` : null,
+      `Comment: "${body.commentText}"`,
+      `Write a reply to this comment.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        max_completion_tokens: 256,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      });
+
+      const reply = completion.choices[0]?.message?.content?.trim() ?? "";
+      sendSuccess(res, { reply, model: "gpt-5-mini" });
+    } catch (err) {
+      logger.error({ err }, "AI generate-reply failed");
+      sendError(res, "AI_ERROR", "Failed to generate reply", undefined, 500);
+    }
   },
 );
 
