@@ -73,7 +73,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
     // The user can deselect permissions on the consent screen, so this is the source of truth.
     const grantedScopes = await getGrantedPermissions(longToken);
     const canPost = grantedScopes.includes("pages_manage_posts");
-    const canReadComments = grantedScopes.includes("pages_read_user_content");
+    const canReadComments = grantedScopes.includes("pages_read_engagement");
     logger.info({ grantedScopes, canPost, canReadComments }, "Facebook granted permissions");
 
     // Step 3: list all Facebook Pages this user manages
