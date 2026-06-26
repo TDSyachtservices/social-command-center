@@ -345,10 +345,56 @@ router.post(
   validateBody(replySchema),
   async (req: Request<{ id: string }>, res: Response) => {
     const { id } = req.params;
-    const existing = await prisma.socialComment.findUnique({ where: { id } });
+    const existing = await prisma.socialComment.findUnique({
+      where: { id },
+      include: { account: true },
+    });
     if (!existing) throw notFound("Comment", id);
 
     const body = req.body as z.infer<typeof replySchema>;
+
+    // ── Post the reply to Facebook if we have the external comment ID + token ──
+    let fbStatus: "sent" | "failed" | "pending" = "pending";
+    let fbError: string | undefined;
+
+    if (existing.platform === "FACEBOOK" && existing.externalCommentId) {
+      const token = existing.account?.tokenEncrypted
+        ? (() => {
+            try { return decrypt(existing.account.tokenEncrypted!); }
+            catch { return null; }
+          })()
+        : null;
+
+      if (token) {
+        try {
+          const fbUrl = `https://graph.facebook.com/v19.0/${existing.externalCommentId}/comments`;
+          const fbRes = await fetch(fbUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: body.replyText, access_token: token }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          const fbData = await fbRes.json() as { id?: string; error?: { message?: string } };
+          if (!fbRes.ok || fbData.error) {
+            fbError = fbData.error?.message ?? `HTTP ${fbRes.status}`;
+            logger.warn({ fbError, commentId: id }, "Facebook reply failed");
+            fbStatus = "failed";
+          } else {
+            fbStatus = "sent";
+          }
+        } catch (err) {
+          fbError = String(err);
+          logger.warn({ err, commentId: id }, "Facebook reply network error");
+          fbStatus = "failed";
+        }
+      } else {
+        fbError = "No access token available";
+        fbStatus = "failed";
+      }
+    } else {
+      // Non-Facebook platform or no external ID — skip FB call
+      fbStatus = "sent";
+    }
 
     const [reply] = await prisma.$transaction([
       prisma.socialCommentReply.create({
@@ -356,7 +402,7 @@ router.post(
           commentId: id,
           replyText: body.replyText,
           sentBy: body.sentBy ?? "admin",
-          status: "sent",
+          status: fbStatus,
         },
       }),
       prisma.socialComment.update({
@@ -368,14 +414,15 @@ router.post(
           platform: existing.platform,
           accountId: existing.accountId ?? undefined,
           actionType: "reply_sent",
-          status: "success",
+          status: fbStatus === "sent" ? "success" : "error",
+          errorMessage: fbError,
           relatedPost: existing.originalPostTitle,
           relatedCommenter: existing.commenterHandle ?? existing.commenterName,
         },
       }),
     ]);
 
-    sendSuccess(res, reply, undefined, 201);
+    sendSuccess(res, { ...reply, fbStatus, fbError }, undefined, 201);
   },
 );
 
