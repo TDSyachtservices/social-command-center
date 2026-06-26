@@ -191,16 +191,15 @@ export async function getPagePosts(opts: {
   }));
 }
 
-/** Fetch the page's feed with comments embedded in one request.
- *  Uses the /feed endpoint with a nested comments field — this works
- *  with the page access token + pages_read_engagement without needing
- *  the separately-reviewed pages_read_user_content permission. */
+/** Fetch the page's posts with comments embedded in one request.
+ *  Uses /{pageId}/posts (page-created content only) which works with the
+ *  page access token. /feed requires broader permissions and fails with #10. */
 export async function getPageFeedWithComments(opts: {
   accessToken: string;
   pageId: string;
   limit?: number;
 }): Promise<PagePostWithComments[]> {
-  const url = new URL(`${GRAPH}/${opts.pageId}/feed`);
+  const url = new URL(`${GRAPH}/${opts.pageId}/posts`);
   url.searchParams.set("access_token", opts.accessToken);
   url.searchParams.set(
     "fields",

@@ -155,26 +155,25 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
   const permRes = await fetch(permUrl.toString(), { signal: AbortSignal.timeout(10_000) });
   const permData = await permRes.json();
 
-  // Try feed without comments first
-  const feedUrl = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/feed`);
-  feedUrl.searchParams.set("access_token", accessToken);
-  feedUrl.searchParams.set("fields", "id,message,created_time");
-  feedUrl.searchParams.set("limit", "2");
-  const feedRes = await fetch(feedUrl.toString(), { signal: AbortSignal.timeout(15_000) });
-  const feedData = await feedRes.json();
-
-  // Try posts endpoint
+  // Try /posts with embedded comments
   const postsUrl = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/posts`);
   postsUrl.searchParams.set("access_token", accessToken);
-  postsUrl.searchParams.set("fields", "id,message,created_time");
-  postsUrl.searchParams.set("limit", "2");
+  postsUrl.searchParams.set("fields", "id,message,created_time,comments{id,from,message,created_time}");
+  postsUrl.searchParams.set("limit", "3");
   const postsRes = await fetch(postsUrl.toString(), { signal: AbortSignal.timeout(15_000) });
-  const postsData = await postsRes.json();
+  const postsData = (await postsRes.json()) as {
+    data?: Array<{ id: string; comments?: { data: unknown[] } }>;
+    error?: { message: string; code: number };
+  };
+
+  const commentCounts = (postsData.data ?? []).map((p) => ({
+    postId: p.id,
+    commentCount: p.comments?.data?.length ?? 0,
+  }));
 
   sendSuccess(res, {
     tokenPermissions: permData,
-    feedResult: { status: feedRes.status, data: feedData },
-    postsResult: { status: postsRes.status, data: postsData },
+    postsWithComments: { status: postsRes.status, commentCounts, error: postsData.error ?? null },
   });
 });
 
