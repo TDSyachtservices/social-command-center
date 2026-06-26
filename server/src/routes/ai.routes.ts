@@ -6,9 +6,12 @@ import { validateBody } from "../utils/validation.js";
 import { prisma } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
 
+// Supports both Replit AI proxy and a standard OpenAI API key
 const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "placeholder",
+  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+    ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
+    : {}),
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? "placeholder",
 });
 
 const router = Router();
