@@ -18,6 +18,7 @@ import settingsRouter from "./routes/settings.routes.js";
 import aiRouter from "./routes/ai.routes.js";
 import websiteRouter from "./routes/website.routes.js";
 import authRouter from "./routes/auth.routes.js";
+import webhooksRouter from "./routes/webhooks.routes.js";
 
 const app = express();
 
@@ -99,6 +100,9 @@ app.use("/api/settings", settingsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/website", websiteRouter);
 app.use("/api/auth", authRouter);
+// Webhooks are mounted outside /api so the Meta dashboard URL is clean:
+// https://<your-railway-domain>/webhooks/facebook
+app.use("/webhooks", webhooksRouter);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

@@ -100,7 +100,16 @@ router.post("/sync", async (_req: Request, res: Response) => {
         Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
       );
 
-    const feedPosts = await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 });
+    // nameLookup: if the API omits `from`, check whether a webhook already stored the name
+    const nameLookup = async (externalId: string): Promise<string | null> => {
+      const row = await prisma.socialComment.findFirst({
+        where: { externalCommentId: externalId, NOT: { commenterName: { in: ["Unknown", "Facebook User"] } } },
+        select: { commenterName: true },
+      });
+      return row?.commenterName ?? null;
+    };
+
+    const feedPosts = await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50, nameLookup });
 
     for (const post of feedPosts) {
       const postTitle = appPostMap[post.externalPostId] ?? (post.message.slice(0, 60) || "Facebook post");

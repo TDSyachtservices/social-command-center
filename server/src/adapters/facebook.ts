@@ -198,6 +198,8 @@ export async function getPageFeedWithComments(opts: {
   accessToken: string;
   pageId: string;
   limit?: number;
+  /** Optional: look up a stored commenter name by external comment ID */
+  nameLookup?: (externalId: string) => Promise<string | null>;
 }): Promise<PagePostWithComments[]> {
   // Step 1: get posts (no embedded comments — we'll fetch comments directly per-post
   // because the direct /{post}/comments endpoint returns `from` when the nested query does not)
@@ -236,16 +238,25 @@ export async function getPageFeedWithComments(opts: {
       logger.warn({ postId: post.id, fbError: commentsData.error }, "Facebook getComments error");
     }
 
+    const mappedComments: PlatformComment[] = [];
+    for (const c of commentsData.data ?? []) {
+      let commenterName = c.from?.name ?? null;
+      if (!commenterName && opts.nameLookup) {
+        commenterName = await opts.nameLookup(c.id);
+      }
+      mappedComments.push({
+        externalId: c.id,
+        commenterName: commenterName ?? "Facebook User",
+        text: c.message,
+        timestamp: c.created_time,
+      });
+    }
+
     results.push({
       externalPostId: post.id,
       message: post.message ?? "",
       createdTime: post.created_time,
-      comments: (commentsData.data ?? []).map((c) => ({
-        externalId: c.id,
-        commenterName: c.from?.name ?? "Facebook User",
-        text: c.message,
-        timestamp: c.created_time,
-      })),
+      comments: mappedComments,
     });
   }
 
@@ -257,6 +268,8 @@ export async function getPageFeedWithComments(opts: {
 export async function getComments(opts: {
   accessToken: string;
   postId: string;
+  /** Optional: look up a stored commenter name by external comment ID (e.g. from a webhook-populated DB row) */
+  nameLookup?: (externalId: string) => Promise<string | null>;
 }): Promise<PlatformComment[]> {
   const url = new URL(`${GRAPH}/${opts.postId}/comments`);
   url.searchParams.set("access_token", opts.accessToken);
@@ -273,12 +286,22 @@ export async function getComments(opts: {
     return [];
   }
 
-  return (data.data ?? []).map((c) => ({
-    externalId: c.id,
-    commenterName: c.from?.name ?? "Unknown",
-    text: c.message,
-    timestamp: c.created_time,
-  }));
+  const comments: PlatformComment[] = [];
+  for (const c of data.data ?? []) {
+    // Facebook may omit `from` due to permission restrictions.
+    // Fall back to a caller-supplied DB lookup (populated by webhooks) before using a placeholder.
+    let commenterName = c.from?.name ?? null;
+    if (!commenterName && opts.nameLookup) {
+      commenterName = await opts.nameLookup(c.id);
+    }
+    comments.push({
+      externalId: c.id,
+      commenterName: commenterName ?? "Facebook User",
+      text: c.message,
+      timestamp: c.created_time,
+    });
+  }
+  return comments;
 }
 
 export async function replyToComment(opts: {
