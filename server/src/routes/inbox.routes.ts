@@ -193,7 +193,7 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
   for (const commentId of firstCommentIds.slice(0, 2)) {
     const directUrl = new URL(`https://graph.facebook.com/v19.0/${commentId}`);
     directUrl.searchParams.set("access_token", accessToken);
-    directUrl.searchParams.set("fields", "id,from{id,name},user_id,message");
+    directUrl.searchParams.set("fields", "id,from{id,name},message");
     const directRes = await fetch(directUrl.toString(), { signal: AbortSignal.timeout(10_000) });
     directResults.push({ commentId, status: directRes.status, data: await directRes.json() });
   }

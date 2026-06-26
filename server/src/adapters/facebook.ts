@@ -223,7 +223,7 @@ export async function getPageFeedWithComments(opts: {
   for (const post of postsData.data ?? []) {
     const commentsUrl = new URL(`${GRAPH}/${post.id}/comments`);
     commentsUrl.searchParams.set("access_token", opts.accessToken);
-    commentsUrl.searchParams.set("fields", "id,from{id,name},user_id,message,created_time");
+    commentsUrl.searchParams.set("fields", "id,from{id,name},message,created_time");
     commentsUrl.searchParams.set("limit", "100");
 
     const commentsRes = await fetch(commentsUrl.toString(), { signal: AbortSignal.timeout(15_000) });
