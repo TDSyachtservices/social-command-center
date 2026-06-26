@@ -72,6 +72,12 @@ router.get("/sync-logs", async (_req: Request, res: Response) => {
 
 // ─── Real Facebook comment sync ───────────────────────────────────────────────
 router.post("/sync", async (_req: Request, res: Response) => {
+  // Backfill: rename any legacy "Unknown" rows to "Facebook User"
+  await prisma.socialComment.updateMany({
+    where: { platform: "FACEBOOK", commenterName: { in: ["Unknown", null] } },
+    data: { commenterName: "Facebook User" },
+  });
+
   const accounts = await prisma.socialAccount.findMany({
     where: { connectionStatus: "connected", platform: "FACEBOOK", commentReadCapability: true },
   });
