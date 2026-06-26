@@ -24,6 +24,11 @@ export default function SocialInbox() {
     setMobileView("detail");
   };
 
+  const handleCommentFieldChange = (fields: Partial<Pick<MockComment, "status" | "priority" | "assignedUser">>) => {
+    setSelectedComment(prev => prev ? { ...prev, ...fields } : prev);
+    setRefreshKey(k => k + 1);
+  };
+
   const handleBack = () => {
     setMobileView("list");
   };
@@ -104,7 +109,7 @@ export default function SocialInbox() {
 
           {selectedComment ? (
             <div className="flex-1 overflow-y-auto">
-              <CommentDetailPanel comment={selectedComment} />
+              <CommentDetailPanel comment={selectedComment} onFieldChange={handleCommentFieldChange} />
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center p-6">
