@@ -163,25 +163,31 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
   const permRes = await fetch(permUrl.toString(), { signal: AbortSignal.timeout(10_000) });
   const permData = await permRes.json();
 
-  // Try /posts with embedded comments
+  // Try /posts with embedded comments — return raw data so we can see from field
   const postsUrl = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/posts`);
   postsUrl.searchParams.set("access_token", accessToken);
-  postsUrl.searchParams.set("fields", "id,message,created_time,comments{id,from,message,created_time}");
-  postsUrl.searchParams.set("limit", "3");
+  postsUrl.searchParams.set("fields", "id,message,created_time,comments{id,from{id,name},user_id,message,created_time}");
+  postsUrl.searchParams.set("limit", "5");
   const postsRes = await fetch(postsUrl.toString(), { signal: AbortSignal.timeout(15_000) });
   const postsData = (await postsRes.json()) as {
-    data?: Array<{ id: string; comments?: { data: unknown[] } }>;
+    data?: Array<{ id: string; message?: string; comments?: { data: unknown[] } }>;
     error?: { message: string; code: number };
   };
 
-  const commentCounts = (postsData.data ?? []).map((p) => ({
-    postId: p.id,
-    commentCount: p.comments?.data?.length ?? 0,
-  }));
+  // Return the first 5 raw comments across posts so we can inspect the from field
+  const rawComments: unknown[] = [];
+  for (const p of postsData.data ?? []) {
+    for (const c of p.comments?.data ?? []) {
+      rawComments.push({ postId: p.id, comment: c });
+      if (rawComments.length >= 5) break;
+    }
+    if (rawComments.length >= 5) break;
+  }
 
   sendSuccess(res, {
     tokenPermissions: permData,
-    postsWithComments: { status: postsRes.status, commentCounts, error: postsData.error ?? null },
+    rawComments,
+    error: postsData.error ?? null,
   });
 });
 
