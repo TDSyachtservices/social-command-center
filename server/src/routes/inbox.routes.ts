@@ -5,7 +5,7 @@ import { sendSuccess } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { decrypt } from "../utils/crypto.js";
-import { getComments, getPagePosts } from "../adapters/facebook.js";
+import { getComments, getPagePosts, getPageFeedWithComments } from "../adapters/facebook.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
@@ -91,8 +91,6 @@ router.post("/sync", async (_req: Request, res: Response) => {
       continue;
     }
 
-    const pagePosts = await getPagePosts({ accessToken, pageId: account.accountId, limit: 50 });
-
     const appPostMap = await prisma.scheduledPostPlatform
       .findMany({
         where: { accountId: account.id, platform: "FACEBOOK", status: "PUBLISHED", externalPostId: { not: null } },
@@ -102,38 +100,33 @@ router.post("/sync", async (_req: Request, res: Response) => {
         Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
       );
 
-    for (const post of pagePosts) {
+    const feedPosts = await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 });
+
+    for (const post of feedPosts) {
       const postTitle = appPostMap[post.externalPostId] ?? (post.message.slice(0, 60) || "Facebook post");
-      try {
-        const comments = await getComments({ accessToken, postId: post.externalPostId });
-        for (const c of comments) {
-          const existing = await prisma.socialComment.findFirst({
-            where: { externalCommentId: c.externalId },
+      for (const c of post.comments) {
+        const existing = await prisma.socialComment.findFirst({
+          where: { externalCommentId: c.externalId },
+        });
+        if (!existing) {
+          await prisma.socialComment.create({
+            data: {
+              platform: "FACEBOOK",
+              accountId: account.id,
+              accountName: account.accountName,
+              commenterName: c.commenterName,
+              commentText: c.text,
+              originalPostTitle: postTitle,
+              originalPostCaption: post.message,
+              externalCommentId: c.externalId,
+              timestamp: new Date(c.timestamp),
+            },
           });
-          if (!existing) {
-            await prisma.socialComment.create({
-              data: {
-                platform: "FACEBOOK",
-                accountId: account.id,
-                accountName: account.accountName,
-                commenterName: c.commenterName,
-                commentText: c.text,
-                originalPostTitle: postTitle,
-                originalPostCaption: post.message,
-                externalCommentId: c.externalId,
-                timestamp: new Date(c.timestamp),
-              },
-            });
-            totalNew++;
-          }
-          totalSynced++;
+          totalNew++;
         }
-        results.push({ accountId: account.id, postId: post.externalPostId, synced: comments.length });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        logger.error({ accountId: account.id, postId: post.externalPostId, err }, "Failed to fetch Facebook comments");
-        results.push({ accountId: account.id, postId: post.externalPostId, synced: 0, error: msg });
+        totalSynced++;
       }
+      results.push({ accountId: account.id, postId: post.externalPostId, synced: post.comments.length });
     }
 
     await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
@@ -145,7 +138,7 @@ router.post("/sync", async (_req: Request, res: Response) => {
   sendSuccess(res, { accounts: accounts.length, totalSynced, totalNew, results });
 });
 
-// ─── Debug: raw Facebook comment response for one post ────────────────────────
+// ─── Debug: raw Facebook feed+comments response ───────────────────────────────
 router.get("/sync-debug", async (_req: Request, res: Response) => {
   const account = await prisma.socialAccount.findFirst({
     where: { connectionStatus: "connected", platform: "FACEBOOK" },
@@ -155,18 +148,13 @@ router.get("/sync-debug", async (_req: Request, res: Response) => {
     return;
   }
   const accessToken = decrypt(account.tokenEncrypted);
-  const posts = await getPagePosts({ accessToken, pageId: account.accountId, limit: 3 });
-  const debug = await Promise.all(
-    posts.map(async (p) => {
-      const url = new URL(`https://graph.facebook.com/v19.0/${p.externalPostId}/comments`);
-      url.searchParams.set("access_token", accessToken);
-      url.searchParams.set("fields", "id,from,message,created_time");
-      const fbRes = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000) });
-      const raw = await fbRes.json();
-      return { postId: p.externalPostId, status: fbRes.status, raw };
-    }),
-  );
-  sendSuccess(res, debug);
+  const url = new URL(`https://graph.facebook.com/v19.0/${account.accountId}/feed`);
+  url.searchParams.set("access_token", accessToken);
+  url.searchParams.set("fields", "id,message,created_time,comments{id,from,message,created_time}");
+  url.searchParams.set("limit", "3");
+  const fbRes = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  const raw = await fbRes.json();
+  sendSuccess(res, { status: fbRes.status, raw });
 });
 
 // ─── Trigger mock sync ────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ import {
 
 const router = Router();
 
-const FB_SCOPES = ["pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "pages_show_list"].join(",");
+const FB_SCOPES = ["pages_manage_posts", "pages_read_engagement", "pages_show_list"].join(",");
 
 function getRedirectUri(): string {
   const base = (process.env.API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");

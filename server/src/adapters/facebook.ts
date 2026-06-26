@@ -159,6 +159,10 @@ export interface PagePost {
   createdTime: string;
 }
 
+export interface PagePostWithComments extends PagePost {
+  comments: PlatformComment[];
+}
+
 export async function getPagePosts(opts: {
   accessToken: string;
   pageId: string;
@@ -184,6 +188,52 @@ export async function getPagePosts(opts: {
     externalPostId: p.id,
     message: p.message ?? "",
     createdTime: p.created_time,
+  }));
+}
+
+/** Fetch the page's feed with comments embedded in one request.
+ *  Uses the /feed endpoint with a nested comments field — this works
+ *  with the page access token + pages_read_engagement without needing
+ *  the separately-reviewed pages_read_user_content permission. */
+export async function getPageFeedWithComments(opts: {
+  accessToken: string;
+  pageId: string;
+  limit?: number;
+}): Promise<PagePostWithComments[]> {
+  const url = new URL(`${GRAPH}/${opts.pageId}/feed`);
+  url.searchParams.set("access_token", opts.accessToken);
+  url.searchParams.set(
+    "fields",
+    "id,message,created_time,comments{id,from,message,created_time}",
+  );
+  url.searchParams.set("limit", String(opts.limit ?? 50));
+
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(20_000) });
+  const data = (await res.json()) as {
+    data?: Array<{
+      id: string;
+      message?: string;
+      created_time: string;
+      comments?: { data: Array<{ id: string; from?: { name: string }; message: string; created_time: string }> };
+    }>;
+    error?: { message: string; code: number };
+  };
+
+  if (data.error) {
+    logger.warn({ pageId: opts.pageId, fbError: data.error }, "Facebook getPageFeedWithComments error");
+    return [];
+  }
+
+  return (data.data ?? []).map((p) => ({
+    externalPostId: p.id,
+    message: p.message ?? "",
+    createdTime: p.created_time,
+    comments: (p.comments?.data ?? []).map((c) => ({
+      externalId: c.id,
+      commenterName: c.from?.name ?? "Unknown",
+      text: c.message,
+      timestamp: c.created_time,
+    })),
   }));
 }
 
