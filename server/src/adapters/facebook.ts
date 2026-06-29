@@ -107,6 +107,35 @@ export async function getPages(userToken: string): Promise<Array<{
   return data.data;
 }
 
+// Returns the Instagram Business Account linked to a Facebook Page, or null if none.
+export async function getInstagramAccountForPage(
+  pageId: string,
+  pageToken: string,
+): Promise<{ id: string; name: string; username?: string } | null> {
+  const url = new URL(`${GRAPH}/${pageId}`);
+  url.searchParams.set("fields", "instagram_business_account{id,name,username}");
+  url.searchParams.set("access_token", pageToken);
+
+  const res = await fetch(url.toString());
+  const data = (await res.json()) as {
+    instagram_business_account?: { id: string; name?: string; username?: string };
+    error?: { message: string };
+  };
+
+  if (data.error) {
+    logger.warn({ pageId, error: data.error }, "Could not fetch Instagram account for page");
+    return null;
+  }
+  if (!data.instagram_business_account) return null;
+
+  const iga = data.instagram_business_account;
+  return {
+    id: iga.id,
+    name: iga.name ?? iga.username ?? iga.id,
+    username: iga.username,
+  };
+}
+
 // ─── Publishing ────────────────────────────────────────────────────────────────
 
 export async function publishPost(opts: {

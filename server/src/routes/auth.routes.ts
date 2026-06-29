@@ -7,11 +7,23 @@ import {
   getLongLivedToken,
   getPages,
   getGrantedPermissions,
+  getInstagramAccountForPage,
 } from "../adapters/facebook.js";
 
 const router = Router();
 
-const FB_SCOPES = ["pages_manage_posts", "pages_manage_engagement", "pages_read_engagement", "pages_read_user_content", "pages_show_list", "read_insights"].join(",");
+const FB_SCOPES = [
+  "pages_manage_posts",
+  "pages_manage_engagement",
+  "pages_read_engagement",
+  "pages_read_user_content",
+  "pages_show_list",
+  "read_insights",
+  "instagram_basic",
+  "instagram_manage_comments",
+  "instagram_content_publish",
+  "instagram_manage_insights",
+].join(",");
 
 function getRedirectUri(): string {
   const base = (process.env.API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
@@ -20,6 +32,15 @@ function getRedirectUri(): string {
 
 function getFrontendUrl(): string {
   return (process.env.FRONTEND_URL ?? "http://localhost:5173").split(",")[0].trim();
+}
+
+function buildOAuthUrl(clientId: string, redirectUri: string): string {
+  const url = new URL("https://www.facebook.com/dialog/oauth");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("scope", FB_SCOPES);
+  url.searchParams.set("response_type", "code");
+  return url.toString();
 }
 
 // ─── GET /api/auth/facebook ────────────────────────────────────────────────────
@@ -33,15 +54,23 @@ router.get("/facebook", (_req: Request, res: Response) => {
     );
     return;
   }
-
-  const url = new URL("https://www.facebook.com/dialog/oauth");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", getRedirectUri());
-  url.searchParams.set("scope", FB_SCOPES);
-  url.searchParams.set("response_type", "code");
-
   logger.info({ redirectUri: getRedirectUri() }, "Redirecting to Facebook OAuth");
-  res.redirect(url.toString());
+  res.redirect(buildOAuthUrl(clientId, getRedirectUri()));
+});
+
+// ─── GET /api/auth/instagram ───────────────────────────────────────────────────
+// Instagram Business accounts are discovered via the Facebook OAuth flow.
+// This route starts the same OAuth but the callback also upserts linked IG accounts.
+router.get("/instagram", (_req: Request, res: Response) => {
+  const clientId = process.env.META_CLIENT_ID;
+  if (!clientId) {
+    res.status(500).send(
+      "<h2>Configuration error</h2><p>META_CLIENT_ID is not set on this server.</p>",
+    );
+    return;
+  }
+  logger.info({ redirectUri: getRedirectUri() }, "Redirecting to Instagram OAuth (via Facebook)");
+  res.redirect(buildOAuthUrl(clientId, getRedirectUri()));
 });
 
 // ─── GET /api/auth/facebook/callback ──────────────────────────────────────────
@@ -88,19 +117,27 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
       return;
     }
 
-    // Step 4: upsert each Page as a SocialAccount
-    let connectedCount = 0;
+    // Instagram capabilities depend on which scopes were granted
+    const canIgRead = grantedScopes.includes("instagram_basic");
+    const canIgComment = grantedScopes.includes("instagram_manage_comments");
+    const canIgPublish = grantedScopes.includes("instagram_content_publish");
+
+    // Step 4: upsert each Page as a SocialAccount, then discover linked Instagram accounts
+    let fbCount = 0;
+    let igCount = 0;
+
     for (const page of pages) {
       const encryptedToken = encrypt(page.access_token);
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
-      const existing = await prisma.socialAccount.findFirst({
+      // ── Facebook Page ──
+      const existingFb = await prisma.socialAccount.findFirst({
         where: { platform: "FACEBOOK", accountId: page.id },
       });
 
-      if (existing) {
+      if (existingFb) {
         await prisma.socialAccount.update({
-          where: { id: existing.id },
+          where: { id: existingFb.id },
           data: {
             accountName: page.name,
             connectionStatus: "connected",
@@ -115,7 +152,7 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
             metadata: { category: page.category },
           },
         });
-        logger.info({ pageId: page.id, name: page.name, canPost, canReplyComments }, "Facebook page token refreshed");
+        logger.info({ pageId: page.id, name: page.name }, "Facebook page token refreshed");
       } else {
         await prisma.socialAccount.create({
           data: {
@@ -136,12 +173,57 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
         });
         logger.info({ pageId: page.id, name: page.name, canPost }, "Facebook page connected");
       }
-      connectedCount++;
+      fbCount++;
+
+      // ── Instagram Business Account linked to this Page ──
+      if (canIgRead) {
+        try {
+          const igAccount = await getInstagramAccountForPage(page.id, page.access_token);
+          if (igAccount) {
+            const existingIg = await prisma.socialAccount.findFirst({
+              where: { platform: "INSTAGRAM", accountId: igAccount.id },
+            });
+
+            const igData = {
+              accountName: igAccount.username ? `@${igAccount.username}` : igAccount.name,
+              connectionStatus: "connected",
+              tokenEncrypted: encryptedToken,   // page token is used for IG API calls
+              tokenExpiresAt: expiresAt,
+              postingCapability: canIgPublish,
+              commentReadCapability: canIgComment,
+              commentReplyCapability: canIgComment,
+              moderationCapability: false,
+              lastSync: new Date(),
+              scopes: grantedScopes,
+              metadata: {
+                igUsername: igAccount.username ?? null,
+                linkedFbPageId: page.id,
+                linkedFbPageName: page.name,
+              },
+            };
+
+            if (existingIg) {
+              await prisma.socialAccount.update({ where: { id: existingIg.id }, data: igData });
+              logger.info({ igId: igAccount.id, name: igAccount.name }, "Instagram account refreshed");
+            } else {
+              await prisma.socialAccount.create({
+                data: { platform: "INSTAGRAM", accountId: igAccount.id, ...igData },
+              });
+              logger.info({ igId: igAccount.id, name: igAccount.name }, "Instagram account connected");
+            }
+            igCount++;
+          } else {
+            logger.info({ pageId: page.id }, "No Instagram Business Account linked to this page");
+          }
+        } catch (igErr) {
+          logger.warn({ pageId: page.id, igErr }, "Could not fetch Instagram account for page — skipping");
+        }
+      }
     }
 
-    logger.info({ pages: pages.length }, "Facebook OAuth complete");
+    logger.info({ fbPages: fbCount, igAccounts: igCount }, "OAuth complete");
     res.redirect(
-      `${frontendUrl}/connected-accounts?connected=facebook&pages=${connectedCount}`,
+      `${frontendUrl}/connected-accounts?connected=facebook&pages=${fbCount}&instagram=${igCount}`,
     );
   } catch (err) {
     logger.error(err, "Facebook OAuth callback error");

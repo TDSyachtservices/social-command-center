@@ -6,6 +6,7 @@ exports.exchangeCodeForToken = exchangeCodeForToken;
 exports.getLongLivedToken = getLongLivedToken;
 exports.getGrantedPermissions = getGrantedPermissions;
 exports.getPages = getPages;
+exports.getInstagramAccountForPage = getInstagramAccountForPage;
 exports.publishPost = publishPost;
 exports.getPagePosts = getPagePosts;
 exports.getPageFeedWithComments = getPageFeedWithComments;
@@ -76,6 +77,26 @@ async function getPages(userToken) {
         throw new Error(`Could not fetch pages: ${data.error?.message ?? "no data"}`);
     }
     return data.data;
+}
+// Returns the Instagram Business Account linked to a Facebook Page, or null if none.
+async function getInstagramAccountForPage(pageId, pageToken) {
+    const url = new URL(`${GRAPH}/${pageId}`);
+    url.searchParams.set("fields", "instagram_business_account{id,name,username}");
+    url.searchParams.set("access_token", pageToken);
+    const res = await fetch(url.toString());
+    const data = (await res.json());
+    if (data.error) {
+        logger_js_1.logger.warn({ pageId, error: data.error }, "Could not fetch Instagram account for page");
+        return null;
+    }
+    if (!data.instagram_business_account)
+        return null;
+    const iga = data.instagram_business_account;
+    return {
+        id: iga.id,
+        name: iga.name ?? iga.username ?? iga.id,
+        username: iga.username,
+    };
 }
 // ─── Publishing ────────────────────────────────────────────────────────────────
 async function publishPost(opts) {
