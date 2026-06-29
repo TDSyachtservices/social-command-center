@@ -13,31 +13,25 @@ FROM base AS deps
 COPY package*.json ./
 RUN npm install --omit=dev --ignore-scripts
 
-# ─── Prisma client generation ──────────────────────────────────────────────
-# Runs in its own stage so we get the generated client without needing the
-# full source or tsc — avoids the tsc build-cache problem.
-FROM base AS prisma
+# ─── Build ─────────────────────────────────────────────────────────────────
+FROM base AS builder
 COPY package*.json ./
 RUN npm install --ignore-scripts
 COPY prisma ./prisma
 RUN npx prisma generate
-
-# ─── Source checkout ──────────────────────────────────────────────────────
-# dist/ is committed to the repo alongside src/. We copy the full checkout
-# here and take dist/ from it in the runner — bypassing the tsc layer cache
-# entirely. Every GitHub push + redeploy always uses the latest committed JS.
-FROM base AS source
-COPY . .
+COPY tsconfig.json ./
+COPY src ./src
+RUN npx tsc -p tsconfig.json
 
 # ─── Production image ──────────────────────────────────────────────────────
 FROM base AS runner
 ENV NODE_ENV=production
 
-COPY --from=deps   /app/node_modules          ./node_modules
-COPY --from=source /app/dist                  ./dist
-COPY --from=source /app/prisma                ./prisma
-COPY --from=prisma /app/node_modules/.prisma  ./node_modules/.prisma
-COPY --from=prisma /app/node_modules/@prisma  ./node_modules/@prisma
+COPY --from=deps    /app/node_modules          ./node_modules
+COPY --from=builder /app/dist                  ./dist
+COPY --from=builder /app/prisma                ./prisma
+COPY --from=builder /app/node_modules/.prisma  ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma  ./node_modules/@prisma
 
 # Persistent upload directory — mount a Railway Volume at /app/uploads
 RUN mkdir -p /app/uploads
