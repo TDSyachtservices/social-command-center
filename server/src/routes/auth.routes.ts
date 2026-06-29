@@ -40,6 +40,10 @@ function buildOAuthUrl(clientId: string, redirectUri: string): string {
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("scope", FB_SCOPES);
   url.searchParams.set("response_type", "code");
+  // Force Facebook to re-prompt for permissions the user hasn't granted yet.
+  // Without this, reconnecting will NOT re-ask for a previously skipped/declined
+  // permission (e.g. instagram_manage_comments enabled after the first connect).
+  url.searchParams.set("auth_type", "rerequest");
   return url.toString();
 }
 
@@ -192,7 +196,8 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
               postingCapability: canIgPublish,
               commentReadCapability: canIgComment,
               commentReplyCapability: canIgComment,
-              moderationCapability: false,
+              // IG comment moderation (hide/delete) uses the same permission as read/reply.
+              moderationCapability: canIgComment,
               lastSync: new Date(),
               scopes: grantedScopes,
               metadata: {
