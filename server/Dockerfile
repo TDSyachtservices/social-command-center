@@ -9,18 +9,20 @@ WORKDIR /app
 RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick-tiff
 
 # ─── Production dependencies ───────────────────────────────────────────────
+# Build context is the repo ROOT (Railway mounts the whole monorepo).
+# All COPY sources are prefixed with server/ accordingly.
 FROM base AS deps
-COPY package*.json ./
+COPY server/package*.json ./
 RUN npm install --omit=dev --ignore-scripts
 
 # ─── Build ─────────────────────────────────────────────────────────────────
 FROM base AS builder
-COPY package*.json ./
+COPY server/package*.json ./
 RUN npm install --ignore-scripts
-COPY prisma ./prisma
+COPY server/prisma ./prisma
 RUN npx prisma generate
-COPY tsconfig.json ./
-COPY src ./src
+COPY server/tsconfig.json ./
+COPY server/src ./src
 RUN npx tsc -p tsconfig.json
 
 # ─── Production image ──────────────────────────────────────────────────────
