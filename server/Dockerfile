@@ -8,32 +8,31 @@ WORKDIR /app
 # ImageMagick fails with "no decode delegate for this image format" on .jpg.
 RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick-tiff
 
-# ─── Production dependencies ───────────────────────────────────────────────
-# Build context is the repo ROOT (Railway mounts the whole monorepo).
-# All COPY sources are prefixed with server/ accordingly.
+# ─── Install dependencies ──────────────────────────────────────────────────
+# Railway's rootDirectory is /server, so the Docker build context is the
+# server/ directory itself. All COPY paths are relative to server/ — NO
+# server/ prefix (that would resolve to server/server/... and fail).
 FROM base AS deps
-COPY server/package*.json ./
+COPY package*.json ./
 RUN npm install --omit=dev --ignore-scripts
 
 # ─── Build ─────────────────────────────────────────────────────────────────
 FROM base AS builder
-COPY server/package*.json ./
+COPY package*.json ./
 RUN npm install --ignore-scripts
-COPY server/prisma ./prisma
+COPY . .
 RUN npx prisma generate
-COPY server/tsconfig.json ./
-COPY server/src ./src
-RUN npx tsc -p tsconfig.json
+RUN npm run build
 
 # ─── Production image ──────────────────────────────────────────────────────
 FROM base AS runner
 ENV NODE_ENV=production
 
-COPY --from=deps    /app/node_modules          ./node_modules
-COPY --from=builder /app/dist                  ./dist
-COPY --from=builder /app/prisma                ./prisma
-COPY --from=builder /app/node_modules/.prisma  ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma  ./node_modules/@prisma
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Persistent upload directory — mount a Railway Volume at /app/uploads
 RUN mkdir -p /app/uploads
