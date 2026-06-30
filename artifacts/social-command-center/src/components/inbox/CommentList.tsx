@@ -164,7 +164,11 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
             <p className="text-sm text-muted-foreground">
               {statusFilter !== "all"
                 ? `No comments with status "${statusLabel[statusFilter] ?? statusFilter}"`
-                : "No comments yet — sync your Facebook page to get started"}
+                : platformFilter === "INSTAGRAM"
+                  ? "No Instagram comments yet — connect your Instagram account and sync to get started"
+                  : platformFilter === "FACEBOOK"
+                    ? "No Facebook comments yet — connect your Facebook page and sync to get started"
+                    : "No comments yet — connect your accounts and sync to get started"}
             </p>
           </div>
         ) : (
