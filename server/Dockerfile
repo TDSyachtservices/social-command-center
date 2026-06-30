@@ -17,7 +17,7 @@ RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick
 # at container startup. prisma is in devDependencies so we must NOT prune.
 FROM base AS deps
 COPY package*.json ./
-RUN npm install
+RUN npm ci --include=dev
 
 # ─── Build — reuses deps layer, no second npm install ─────────────────────
 # `npm run build` already runs `prisma generate && tsc`, so no separate
