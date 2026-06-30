@@ -16,8 +16,12 @@ RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick
 # `npm run build` (prisma generate + tsc) and for `npx prisma migrate deploy`
 # at container startup. prisma is in devDependencies so we must NOT prune.
 FROM base AS deps
-COPY package*.json ./
-RUN npm ci --include=dev
+# Copy only package.json — NOT package-lock.json.
+# The lockfile is generated on Replit with internal registry URLs
+# (package-firewall.replit.local) that Railway cannot reach. Excluding it
+# lets npm resolve all deps fresh from the public registry on every build.
+COPY package.json ./
+RUN npm install --include=dev
 
 # ─── Build — reuses deps layer, no second npm install ─────────────────────
 # `npm run build` already runs `prisma generate && tsc`, so no separate
