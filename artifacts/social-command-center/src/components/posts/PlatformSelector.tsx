@@ -8,7 +8,7 @@ interface PlatformSelectorProps {
   onChange: (platforms: Platform[]) => void;
 }
 
-const AVAILABLE_PLATFORMS: Platform[] = ["Facebook", "Instagram", "LinkedIn", "TikTok", "Website"];
+const AVAILABLE_PLATFORMS: Platform[] = ["Facebook", "Instagram", "LinkedIn"];
 
 export function PlatformSelector({ selectedPlatforms, onChange }: PlatformSelectorProps) {
   const togglePlatform = (platform: Platform) => {

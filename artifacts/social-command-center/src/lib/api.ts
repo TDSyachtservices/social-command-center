@@ -49,7 +49,7 @@ export interface ApiPost {
   publishedAt: string | null;
   mediaUrl: string | null;
   mediaType: string | null;
-  platforms: Array<{ platform: string; status: string; accountId: string }>;
+  platforms: Array<{ platform: string; status: string; accountId: string; mediaUrl?: string | null; mediaType?: string | null }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +86,7 @@ export async function createPost(body: {
   scheduledAt?: string;
   mediaUrl?: string;
   mediaType?: string;
+  platformMedia?: Array<{ platform: string; mediaUrl?: string | null; mediaType?: string | null }>;
 }): Promise<ApiPost | null> {
   const result = await apiFetch<ApiPost>("/api/posts", {
     method: "POST",

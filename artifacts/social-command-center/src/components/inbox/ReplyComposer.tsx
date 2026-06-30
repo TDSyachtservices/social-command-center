@@ -2,28 +2,40 @@ import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockSendReply, mockGenerateReply } from "@/lib/mockActions";
 import { Bot, Send, Save, Trash2, Loader2 } from "lucide-react";
+import { sendReply } from "@/lib/api";
 
 interface ReplyComposerProps {
   commentId: string;
   commentText: string;
-  onSuccess: () => void;
+  postTitle?: string;
+  postCaption?: string;
+  onSuccess: (fbStatus?: string, fbError?: string) => void;
 }
 
-export function ReplyComposer({ commentId, commentText, onSuccess }: ReplyComposerProps) {
+export function ReplyComposer({ commentId, commentText, postTitle, postCaption, onSuccess }: ReplyComposerProps) {
   const [reply, setReply] = useState("");
   const [tone, setTone] = useState("professional");
   const [isSending, setIsSending] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setError(null);
     try {
-      const result = await mockGenerateReply(commentText, tone);
-      setReply(result.reply);
-    } catch (error) {
-      console.error(error);
+      // Calls the Replit API server directly (relative URL) — it has Replit's built-in OpenAI access.
+      const res = await fetch("/api/ai/generate-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentText, tone, postTitle, postCaption }),
+      });
+      const data = await res.json() as { success?: boolean; data?: { reply?: string }; error?: string };
+      if (!res.ok || !data.success) throw new Error(data.error ?? "Failed to generate reply");
+      const generatedReply = data.data?.reply ?? "";
+      setReply(generatedReply);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate reply");
     } finally {
       setIsGenerating(false);
     }
@@ -32,12 +44,14 @@ export function ReplyComposer({ commentId, commentText, onSuccess }: ReplyCompos
   const handleSend = async () => {
     if (!reply.trim()) return;
     setIsSending(true);
+    setError(null);
     try {
-      await mockSendReply(commentId, reply);
+      const result = await sendReply(commentId, reply);
+      if (!result.ok) throw new Error("Failed to send reply");
       setReply("");
-      onSuccess();
-    } catch (error) {
-      console.error(error);
+      onSuccess(result.fbStatus, result.fbError);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reply");
     } finally {
       setIsSending(false);
     }
@@ -69,13 +83,13 @@ export function ReplyComposer({ commentId, commentText, onSuccess }: ReplyCompos
           </Select>
         </div>
       </div>
-      
+
       <div className="flex flex-wrap gap-2">
         {quickInserts.map((qi, idx) => (
-          <Button 
-            key={idx} 
-            variant="outline" 
-            size="sm" 
+          <Button
+            key={idx}
+            variant="outline"
+            size="sm"
             className="h-6 text-[10px] px-2"
             onClick={() => setReply(prev => (prev ? prev + " " : "") + qi.text)}
           >
@@ -90,19 +104,22 @@ export function ReplyComposer({ commentId, commentText, onSuccess }: ReplyCompos
         value={reply}
         onChange={(e) => setReply(e.target.value)}
       />
-      
+
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {reply && <p className="text-xs text-green-600 font-medium">✓ AI reply ready — {reply.length} chars</p>}
+
       <div className="flex justify-between items-center">
         <span className="text-xs text-muted-foreground">{reply.length} chars</span>
-        
+
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setReply("")} title="Clear">
+          <Button variant="outline" size="sm" onClick={() => { setReply(""); setError(null); }} title="Clear">
             <Trash2 className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Bot className="h-4 w-4 mr-2" />}
             Generate AI
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => {}} disabled={!reply.trim() || isSending}>
+          <Button variant="secondary" size="sm" disabled>
             <Save className="h-4 w-4 mr-2" /> Save Draft
           </Button>
           <Button size="sm" onClick={handleSend} disabled={!reply.trim() || isSending}>

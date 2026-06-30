@@ -1,7 +1,9 @@
 import { prisma } from "../db/prisma.js";
 import { decrypt } from "../utils/crypto.js";
-import { publishPost as fbPublishPost } from "../adapters/facebook.js";
+import { publishPost as fbPublishPost, type PublishResult as AdapterPublishResult } from "../adapters/facebook.js";
+import { publishPost as igPublishPost } from "../adapters/instagram.js";
 import { logger } from "../utils/logger.js";
+import type { Platform } from "@prisma/client";
 
 export interface PublishResult {
   succeeded: number;
@@ -46,7 +48,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
       continue;
     }
 
-    if (account.platform !== "FACEBOOK") {
+    if (account.platform !== "FACEBOOK" && account.platform !== "INSTAGRAM") {
       logger.info({ platform: account.platform }, "Platform adapter not yet implemented — skipping");
       await prisma.scheduledPostPlatform.update({
         where: { id: platform.id },
@@ -62,7 +64,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
         where: { id: platform.id },
         data: { status: "FAILED", errorMessage: "No real access token. Connect this account via OAuth first." },
       });
-      await writePublishLog(postId, post.title, "FACEBOOK", "publish_failed", "error", null,
+      await writePublishLog(postId, post.title, account.platform, "publish_failed", "error", null,
         "No real access token");
       failed++;
       continue;
@@ -82,20 +84,43 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
     }
 
     try {
-      const result = await fbPublishPost({
-        accessToken,
-        pageId: account.accountId,
-        message: platform.platformCaption ?? post.masterCaption,
-        mediaUrl: post.mediaUrl,
-        mediaType: post.mediaType,
-      });
+      const effectiveMediaUrl = platform.mediaUrl ?? post.mediaUrl;
+      const effectiveMediaType = platform.mediaType ?? post.mediaType;
+      const caption = platform.platformCaption ?? post.masterCaption;
+
+      // Dispatch to the platform-specific adapter. Facebook can post text-only
+      // or with media; Instagram requires media and uses a 2-step container flow.
+      const result: AdapterPublishResult =
+        account.platform === "INSTAGRAM"
+          ? await igPublishPost({
+              accessToken,
+              igUserId: account.accountId,
+              caption,
+              mediaUrl: effectiveMediaUrl,
+              mediaType: effectiveMediaType,
+            })
+          : await fbPublishPost({
+              accessToken,
+              pageId: account.accountId,
+              message: caption,
+              mediaUrl: effectiveMediaUrl,
+              mediaType: effectiveMediaType,
+            });
 
       if (result.success) {
         await prisma.scheduledPostPlatform.update({
           where: { id: platform.id },
-          data: { status: "PUBLISHED", externalPostId: result.externalPostId, publishedAt: new Date() },
+          // Lock in the media actually sent, so a later edit of the post-level
+          // fallback can't retroactively change a published row's media.
+          data: {
+            status: "PUBLISHED",
+            externalPostId: result.externalPostId,
+            publishedAt: new Date(),
+            mediaUrl: effectiveMediaUrl,
+            mediaType: effectiveMediaType,
+          },
         });
-        await writePublishLog(postId, post.title, "FACEBOOK", "published", "success",
+        await writePublishLog(postId, post.title, account.platform, "published", "success",
           result.externalPostId ?? null, null, JSON.stringify(result.rawResponse));
         succeeded++;
       } else {
@@ -107,7 +132,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
             retryCount: { increment: 1 },
           },
         });
-        await writePublishLog(postId, post.title, "FACEBOOK", "publish_failed", "error",
+        await writePublishLog(postId, post.title, account.platform, "publish_failed", "error",
           null, result.errorMessage ?? "Unknown", JSON.stringify(result.rawResponse));
         failed++;
       }
@@ -118,7 +143,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
         where: { id: platform.id },
         data: { status: "FAILED", errorMessage, retryCount: { increment: 1 } },
       });
-      await writePublishLog(postId, post.title, "FACEBOOK", "publish_error", "error", null, errorMessage);
+      await writePublishLog(postId, post.title, account.platform, "publish_error", "error", null, errorMessage);
       failed++;
     }
   }
@@ -141,7 +166,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
 async function writePublishLog(
   postId: string,
   postTitle: string,
-  platform: "FACEBOOK",
+  platform: Platform,
   action: string,
   status: string,
   externalPostId: string | null,

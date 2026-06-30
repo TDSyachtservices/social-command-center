@@ -206,6 +206,8 @@ model ScheduledPostPlatform {
   status          PlatformPostStatus @default(PENDING)
   externalPostId  String?
   platformCaption String?
+  mediaUrl        String?
+  mediaType       String?
   publishedAt     DateTime?
   errorMessage    String?
   retryCount      Int                @default(0)

@@ -19,6 +19,16 @@ const listQuerySchema = z.object({
 });
 
 // ─── Body schemas ─────────────────────────────────────────────────────────────
+const platformEnum = z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]);
+
+// Per-platform media override. Each selected platform may carry its own photo/
+// video; rows with no override fall back to the post-level mediaUrl at publish.
+const platformMediaSchema = z.object({
+  platform: platformEnum,
+  mediaUrl: z.string().url().optional().nullable(),
+  mediaType: z.enum(["image", "video"]).optional().nullable(),
+});
+
 const createPostSchema = z.object({
   title: z.string().min(1).max(300),
   masterCaption: z.string().max(5000).default(""),
@@ -26,10 +36,9 @@ const createPostSchema = z.object({
   scheduledAt: z.string().datetime().optional().nullable(),
   mediaUrl: z.string().url().optional().nullable(),
   mediaType: z.enum(["image", "video"]).optional().nullable(),
-  platforms: z
-    .array(z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]))
-    .min(1),
+  platforms: z.array(platformEnum).min(1),
   accountIds: z.array(z.string()).default([]),
+  platformMedia: z.array(platformMediaSchema).optional(),
 });
 
 const updatePostSchema = createPostSchema.partial();
@@ -96,9 +105,28 @@ router.post(
       ? await prisma.socialAccount.findMany({ where: { id: { in: body.accountIds } } })
       : [];
     const selectedPlatforms = new Set<string>(body.platforms);
+
+    // Map each selected platform to its optional per-platform media override.
+    const mediaByPlatform = new Map<string, { mediaUrl: string | null; mediaType: string | null }>();
+    for (const m of body.platformMedia ?? []) {
+      mediaByPlatform.set(m.platform, { mediaUrl: m.mediaUrl ?? null, mediaType: m.mediaType ?? null });
+    }
+
     const platformRows = selectedAccounts
       .filter((a) => selectedPlatforms.has(a.platform))
-      .map((a) => ({ platform: a.platform, accountId: a.id }));
+      .map((a) => ({
+        platform: a.platform,
+        accountId: a.id,
+        mediaUrl: mediaByPlatform.get(a.platform)?.mediaUrl ?? null,
+        mediaType: mediaByPlatform.get(a.platform)?.mediaType ?? null,
+      }));
+
+    // Post-level media stays as a fallback (list thumbnails, older clients,
+    // publisher default). When the client only sends per-platform media, seed
+    // it from the first platform that has one.
+    const firstPlatformMedia = platformRows.find((r) => r.mediaUrl);
+    const postMediaUrl = body.mediaUrl ?? firstPlatformMedia?.mediaUrl ?? null;
+    const postMediaType = body.mediaType ?? firstPlatformMedia?.mediaType ?? null;
 
     const post = await prisma.scheduledPost.create({
       data: {
@@ -106,8 +134,8 @@ router.post(
         masterCaption: body.masterCaption,
         status: body.status as never,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-        mediaUrl: body.mediaUrl ?? null,
-        mediaType: body.mediaType ?? null,
+        mediaUrl: postMediaUrl,
+        mediaType: postMediaType,
         platforms: { create: platformRows },
       },
       include: { platforms: true },
@@ -127,19 +155,43 @@ router.patch(
     const existing = await prisma.scheduledPost.findUnique({ where: { id } });
     if (!existing) throw notFound("Post", id);
 
-    const post = await prisma.scheduledPost.update({
-      where: { id },
-      data: {
-        ...(body.title !== undefined ? { title: body.title } : {}),
-        ...(body.masterCaption !== undefined ? { masterCaption: body.masterCaption } : {}),
-        ...(body.status !== undefined ? { status: body.status as never } : {}),
-        ...(body.scheduledAt !== undefined
-          ? { scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null }
-          : {}),
-        ...(body.mediaUrl !== undefined ? { mediaUrl: body.mediaUrl } : {}),
-        ...(body.mediaType !== undefined ? { mediaType: body.mediaType } : {}),
-      },
-      include: { platforms: true },
+    // Post-level media fallback: if the client only sends per-platform media,
+    // seed the post-level thumbnail from the first platform that has one.
+    const fallbackPm = body.platformMedia?.find((m) => m.mediaUrl) ?? null;
+
+    const post = await prisma.$transaction(async (tx) => {
+      await tx.scheduledPost.update({
+        where: { id },
+        data: {
+          ...(body.title !== undefined ? { title: body.title } : {}),
+          ...(body.masterCaption !== undefined ? { masterCaption: body.masterCaption } : {}),
+          ...(body.status !== undefined ? { status: body.status as never } : {}),
+          ...(body.scheduledAt !== undefined
+            ? { scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null }
+            : {}),
+          ...(body.mediaUrl !== undefined
+            ? { mediaUrl: body.mediaUrl }
+            : fallbackPm
+              ? { mediaUrl: fallbackPm.mediaUrl ?? null }
+              : {}),
+          ...(body.mediaType !== undefined
+            ? { mediaType: body.mediaType }
+            : fallbackPm
+              ? { mediaType: fallbackPm.mediaType ?? null }
+              : {}),
+        },
+      });
+
+      // Apply per-platform media overrides to existing platform rows. Never
+      // touch rows already PUBLISHED/PUBLISHING — their media is locked in.
+      for (const m of body.platformMedia ?? []) {
+        await tx.scheduledPostPlatform.updateMany({
+          where: { scheduledPostId: id, platform: m.platform, status: { notIn: ["PUBLISHED", "PUBLISHING"] } },
+          data: { mediaUrl: m.mediaUrl ?? null, mediaType: m.mediaType ?? null },
+        });
+      }
+
+      return tx.scheduledPost.findUnique({ where: { id }, include: { platforms: true } });
     });
 
     sendSuccess(res, post);

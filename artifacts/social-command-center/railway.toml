@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @workspace/social-command-center run build"
+
+[deploy]
+staticDir = "dist/public"
+healthcheckPath = "/"
+healthcheckTimeout = 30

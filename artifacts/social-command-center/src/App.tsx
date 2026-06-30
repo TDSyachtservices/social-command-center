@@ -18,10 +18,15 @@ import WebsiteApi from "@/pages/website-api";
 import Settings from "@/pages/settings";
 import MediaLibrary from "@/pages/media-library";
 import MediaOptimizer from "@/pages/media-optimizer";
+import KPI from "@/pages/kpi";
+import KpiMetric from "@/pages/kpi-metric";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import HashtagLibrary from "@/pages/hashtag-library";
+import MentionLibrary from "@/pages/mention-library";
 
 const queryClient = new QueryClient();
 
-function Router() {
+function DashboardRouter() {
   return (
     <AppShell>
       <Switch>
@@ -39,9 +44,22 @@ function Router() {
         <Route path="/ai-assistant" component={AIAssistant} />
         <Route path="/website-api" component={WebsiteApi} />
         <Route path="/settings" component={Settings} />
+        <Route path="/kpi/metric/:metricId" component={KpiMetric} />
+        <Route path="/kpi" component={KPI} />
+        <Route path="/hashtag-library" component={HashtagLibrary} />
+        <Route path="/mention-library" component={MentionLibrary} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>
+  );
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route component={DashboardRouter} />
+    </Switch>
   );
 }
 

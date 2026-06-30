@@ -6,10 +6,12 @@ interface SocialPreviewPanelProps {
   masterCaption: string;
   platformCaptions: Record<Platform, string>;
   mediaUrl: string | null;
+  platformMedia?: Record<string, { url: string; type: "image" | "video" } | null>;
   date?: string;
+  accountNames?: Partial<Record<Platform, string>>;
 }
 
-export function SocialPreviewPanel({ platforms, masterCaption, platformCaptions, mediaUrl, date }: SocialPreviewPanelProps) {
+export function SocialPreviewPanel({ platforms, masterCaption, platformCaptions, mediaUrl, platformMedia, date, accountNames }: SocialPreviewPanelProps) {
   if (platforms.length === 0) {
     return (
       <div className="h-full min-h-[400px] flex items-center justify-center border rounded-lg bg-muted/20 text-muted-foreground p-8 text-center">
@@ -28,8 +30,9 @@ export function SocialPreviewPanel({ platforms, masterCaption, platformCaptions,
             <SocialPreviewCard
               platform={platform}
               caption={platformCaptions[platform] || masterCaption}
-              mediaUrl={mediaUrl}
+              mediaUrl={platformMedia?.[platform]?.url ?? mediaUrl}
               date={date}
+              accountName={accountNames?.[platform]}
             />
           </div>
         ))}
