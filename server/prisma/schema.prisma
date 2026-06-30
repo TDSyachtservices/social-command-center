@@ -201,7 +201,7 @@ model ScheduledPost {
 model ScheduledPostPlatform {
   id              String             @id @default(cuid())
   scheduledPostId String
-  accountId       String
+  accountId       String?
   platform        Platform
   status          PlatformPostStatus @default(PENDING)
   externalPostId  String?
@@ -214,8 +214,8 @@ model ScheduledPostPlatform {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  scheduledPost ScheduledPost @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
-  account       SocialAccount @relation(fields: [accountId], references: [id])
+  scheduledPost ScheduledPost  @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
+  account       SocialAccount? @relation(fields: [accountId], references: [id])
 }
 
 model PublishLog {
