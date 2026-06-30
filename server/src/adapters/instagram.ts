@@ -6,8 +6,7 @@ export type { PublishResult, PlatformCapabilities, PlatformComment };
 const GRAPH = "https://graph.facebook.com/v19.0";
 
 export function getCapabilities(): PlatformCapabilities {
-  // Posting is REAL. Comment read/reply for Instagram is not implemented yet.
-  return { posting: true, commentRead: false, commentReply: false, moderation: false };
+  return { posting: true, commentRead: true, commentReply: true, moderation: false };
 }
 
 /**
@@ -149,21 +148,99 @@ async function waitForContainer(
   };
 }
 
-// ─── Adapter contract stubs (comment APIs not implemented for Instagram yet) ──
+// ─── Comments ──────────────────────────────────────────────────────────────────
 
-export async function getComments(_opts: {
+export interface IgMedia {
+  externalPostId: string;
+  caption: string;
+  createdTime: string;
+}
+
+export interface IgMediaWithComments extends IgMedia {
+  comments: PlatformComment[];
+}
+
+/** Fetch the IG Business account's media, with top-level comments embedded per item. */
+export async function getMediaWithComments(opts: {
+  accessToken: string;
+  igUserId: string;
+  limit?: number;
+}): Promise<IgMediaWithComments[]> {
+  const mediaUrl = new URL(`${GRAPH}/${opts.igUserId}/media`);
+  mediaUrl.searchParams.set("access_token", opts.accessToken);
+  mediaUrl.searchParams.set("fields", "id,caption,timestamp");
+  mediaUrl.searchParams.set("limit", String(opts.limit ?? 50));
+
+  const mediaRes = await fetch(mediaUrl.toString(), { signal: AbortSignal.timeout(20_000) });
+  const mediaData = (await mediaRes.json()) as {
+    data?: Array<{ id: string; caption?: string; timestamp: string }>;
+    error?: { message: string; code: number };
+  };
+
+  if (mediaData.error) {
+    logger.warn({ igUserId: opts.igUserId, error: mediaData.error }, "Instagram getMediaWithComments error");
+    return [];
+  }
+
+  const results: IgMediaWithComments[] = [];
+
+  for (const item of mediaData.data ?? []) {
+    const comments = await getComments({ accessToken: opts.accessToken, postId: item.id });
+    results.push({
+      externalPostId: item.id,
+      caption: item.caption ?? "",
+      createdTime: item.timestamp,
+      comments,
+    });
+  }
+
+  return results;
+}
+
+export async function getComments(opts: {
   accessToken: string;
   postId: string;
 }): Promise<PlatformComment[]> {
-  logger.warn("Instagram getComments is not implemented yet — returning empty list");
-  return [];
+  const url = new URL(`${GRAPH}/${opts.postId}/comments`);
+  url.searchParams.set("access_token", opts.accessToken);
+  url.searchParams.set("fields", "id,text,username,timestamp");
+  url.searchParams.set("limit", "100");
+
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  const data = (await res.json()) as {
+    data?: Array<{ id: string; text: string; username?: string; timestamp: string }>;
+    error?: { message: string; code: number; type: string };
+  };
+
+  if (data.error) {
+    logger.warn({ postId: opts.postId, igError: data.error }, "Instagram getComments error");
+    return [];
+  }
+
+  return (data.data ?? []).map((c) => ({
+    externalId: c.id,
+    commenterName: c.username ? `@${c.username}` : "Instagram User",
+    text: c.text,
+    timestamp: c.timestamp,
+  }));
 }
 
-export async function replyToComment(_opts: {
+export async function replyToComment(opts: {
   accessToken: string;
   commentId: string;
   message: string;
 }): Promise<PublishResult> {
-  logger.warn("Instagram replyToComment is not implemented yet");
-  return { success: false, errorMessage: "Instagram comment replies are not supported yet." };
+  // Instagram replies are posted to /{ig-comment-id}/replies, not /{comment}/comments like Facebook.
+  const res = await fetch(`${GRAPH}/${opts.commentId}/replies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: opts.message, access_token: opts.accessToken }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = (await res.json()) as { id?: string; error?: { message: string } };
+  if (!res.ok || data.error) {
+    logger.warn({ commentId: opts.commentId, igError: data.error }, "Instagram replyToComment error");
+    return { success: false, errorMessage: data.error?.message ?? `HTTP ${res.status}` };
+  }
+  return { success: true, externalPostId: data.id };
 }

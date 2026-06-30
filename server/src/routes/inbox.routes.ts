@@ -5,7 +5,8 @@ import { sendSuccess } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
 import { notFound } from "../utils/errors.js";
 import { decrypt } from "../utils/crypto.js";
-import { getComments, getPagePosts, getPageFeedWithComments, replyToComment } from "../adapters/facebook.js";
+import { getPageFeedWithComments, replyToComment as fbReplyToComment } from "../adapters/facebook.js";
+import { getMediaWithComments, replyToComment as igReplyToComment } from "../adapters/instagram.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
@@ -70,7 +71,7 @@ router.get("/sync-logs", async (_req: Request, res: Response) => {
   sendSuccess(res, logs);
 });
 
-// ─── Real Facebook comment sync ───────────────────────────────────────────────
+// ─── Real Facebook + Instagram comment sync ───────────────────────────────────
 router.post("/sync", async (_req: Request, res: Response) => {
   // Backfill: rename any legacy "Unknown" rows to "Facebook User"
   await prisma.socialComment.updateMany({
@@ -79,7 +80,11 @@ router.post("/sync", async (_req: Request, res: Response) => {
   });
 
   const accounts = await prisma.socialAccount.findMany({
-    where: { connectionStatus: "connected", platform: "FACEBOOK", commentReadCapability: true },
+    where: {
+      connectionStatus: "connected",
+      platform: { in: ["FACEBOOK", "INSTAGRAM"] },
+      commentReadCapability: true,
+    },
   });
 
   let totalSynced = 0;
@@ -99,17 +104,34 @@ router.post("/sync", async (_req: Request, res: Response) => {
 
     const appPostMap = await prisma.scheduledPostPlatform
       .findMany({
-        where: { accountId: account.id, platform: "FACEBOOK", status: "PUBLISHED", externalPostId: { not: null } },
+        where: {
+          accountId: account.id,
+          platform: account.platform,
+          status: "PUBLISHED",
+          externalPostId: { not: null },
+        },
         include: { scheduledPost: { select: { title: true } } },
       })
       .then((rows) =>
         Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
       );
 
-    const feedPosts = await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 });
+    const feedPosts =
+      account.platform === "FACEBOOK"
+        ? await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 })
+        : (await getMediaWithComments({ accessToken, igUserId: account.accountId, limit: 50 })).map((m) => ({
+            externalPostId: m.externalPostId,
+            message: m.caption,
+            createdTime: m.createdTime,
+            comments: m.comments,
+          }));
 
     for (const post of feedPosts) {
-      const postTitle = appPostMap[post.externalPostId] ?? (post.message.slice(0, 60) || "Facebook post");
+      const defaultTitle =
+        account.platform === "FACEBOOK"
+          ? (post.message.slice(0, 60) || "Facebook post")
+          : (post.message.slice(0, 60) || "Instagram post");
+      const postTitle = appPostMap[post.externalPostId] ?? defaultTitle;
       for (const c of post.comments) {
         const existing = await prisma.socialComment.findFirst({
           where: { externalCommentId: c.externalId },
@@ -117,7 +139,7 @@ router.post("/sync", async (_req: Request, res: Response) => {
         if (!existing) {
           await prisma.socialComment.create({
             data: {
-              platform: "FACEBOOK",
+              platform: account.platform,
               accountId: account.id,
               accountName: account.accountName,
               commenterName: c.commenterName,
@@ -137,7 +159,7 @@ router.post("/sync", async (_req: Request, res: Response) => {
 
     await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
     await prisma.socialInboxSyncLog.create({
-      data: { platform: "FACEBOOK", accountId: account.id, actionType: "comment_sync", status: "success" },
+      data: { platform: account.platform, accountId: account.id, actionType: "comment_sync", status: "success" },
     });
   }
 
@@ -353,11 +375,14 @@ router.post(
 
     const body = req.body as z.infer<typeof replySchema>;
 
-    // ── Post the reply to Facebook if we have the external comment ID + token ──
-    let fbStatus: "sent" | "failed" | "pending" = "pending";
-    let fbError: string | undefined;
+    // ── Post the reply to the originating platform if we have the external comment ID + token ──
+    let externalStatus: "sent" | "failed" | "pending" = "pending";
+    let externalError: string | undefined;
 
-    if (existing.platform === "FACEBOOK" && existing.externalCommentId) {
+    if (
+      (existing.platform === "FACEBOOK" || existing.platform === "INSTAGRAM") &&
+      existing.externalCommentId
+    ) {
       const token = existing.account?.tokenEncrypted
         ? (() => {
             try { return decrypt(existing.account.tokenEncrypted!); }
@@ -367,30 +392,31 @@ router.post(
 
       if (token) {
         try {
-          const result = await replyToComment({
+          const replyFn = existing.platform === "FACEBOOK" ? fbReplyToComment : igReplyToComment;
+          const result = await replyFn({
             accessToken: token,
             commentId: existing.externalCommentId,
             message: body.replyText,
           });
           if (result.success) {
-            fbStatus = "sent";
+            externalStatus = "sent";
           } else {
-            fbError = result.errorMessage ?? "Unknown Facebook error";
-            logger.warn({ fbError, commentId: id }, "Facebook reply failed");
-            fbStatus = "failed";
+            externalError = result.errorMessage ?? `Unknown ${existing.platform} error`;
+            logger.warn({ externalError, commentId: id, platform: existing.platform }, "Platform reply failed");
+            externalStatus = "failed";
           }
         } catch (err) {
-          fbError = String(err);
-          logger.warn({ err, commentId: id }, "Facebook reply network error");
-          fbStatus = "failed";
+          externalError = String(err);
+          logger.warn({ err, commentId: id, platform: existing.platform }, "Platform reply network error");
+          externalStatus = "failed";
         }
       } else {
-        fbError = "No access token — reconnect your Facebook page in Settings";
-        fbStatus = "failed";
+        externalError = `No access token — reconnect your ${existing.platform === "FACEBOOK" ? "Facebook page" : "Instagram account"} in Settings`;
+        externalStatus = "failed";
       }
     } else {
-      // Non-Facebook platform or no external ID — skip FB call
-      fbStatus = "sent";
+      // Non-supported platform or no external ID — skip the live API call
+      externalStatus = "sent";
     }
 
     const [reply] = await prisma.$transaction([
@@ -399,7 +425,7 @@ router.post(
           commentId: id,
           replyText: body.replyText,
           sentBy: body.sentBy ?? "admin",
-          status: fbStatus,
+          status: externalStatus,
         },
       }),
       prisma.socialComment.update({
@@ -411,15 +437,15 @@ router.post(
           platform: existing.platform,
           accountId: existing.accountId ?? undefined,
           actionType: "reply_sent",
-          status: fbStatus === "sent" ? "success" : "error",
-          errorMessage: fbError,
+          status: externalStatus === "sent" ? "success" : "error",
+          errorMessage: externalError,
           relatedPost: existing.originalPostTitle,
           relatedCommenter: existing.commenterHandle ?? existing.commenterName,
         },
       }),
     ]);
 
-    sendSuccess(res, { ...reply, fbStatus, fbError }, undefined, 201);
+    sendSuccess(res, { ...reply, fbStatus: externalStatus, fbError: externalError }, undefined, 201);
   },
 );
 
