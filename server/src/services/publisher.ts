@@ -11,6 +11,14 @@ export interface PublishResult {
   skipped: number;
 }
 
+/**
+ * Determines the caption sent to a platform adapter.
+ * A per-platform override takes precedence; falls back to the post-level master caption.
+ */
+export function resolveCaption(platformCaption: string | null | undefined, masterCaption: string): string {
+  return platformCaption ?? masterCaption;
+}
+
 export async function publishPostById(postId: string): Promise<PublishResult> {
   const post = await prisma.scheduledPost.findUnique({
     where: { id: postId },
@@ -30,6 +38,19 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
     }
 
     const account = platform.account;
+
+    // A platform row can exist without an account (caption-only draft created
+    // before the user connects an account).  Skip it — we cannot publish without
+    // a real access token.
+    if (!account) {
+      logger.info({ platformId: platform.id, platform: platform.platform }, "No account linked — skipping platform row");
+      await prisma.scheduledPostPlatform.update({
+        where: { id: platform.id },
+        data: { status: "SKIPPED", errorMessage: "No connected account. Link an account and retry." },
+      });
+      skipped++;
+      continue;
+    }
 
     // Defensive guard: never publish a platform row through an adapter for a
     // different platform. If the row's target platform and the account's
@@ -86,7 +107,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
     try {
       const effectiveMediaUrl = platform.mediaUrl ?? post.mediaUrl;
       const effectiveMediaType = platform.mediaType ?? post.mediaType;
-      const caption = platform.platformCaption ?? post.masterCaption;
+      const caption = resolveCaption(platform.platformCaption, post.masterCaption);
 
       // Dispatch to the platform-specific adapter. Facebook can post text-only
       // or with media; Instagram requires media and uses a 2-step container flow.

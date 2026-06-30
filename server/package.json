@@ -18,7 +18,8 @@
     "prisma:reset": "prisma migrate reset --force",
     "worker:media": "echo 'Media worker not yet implemented'",
     "worker:publish": "echo 'Publish worker not yet implemented'",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2.2",
@@ -35,9 +36,12 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
+    "@types/supertest": "^7.2.0",
     "pino-pretty": "^13.1.0",
     "prisma": "^6.9.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
   }
 }
