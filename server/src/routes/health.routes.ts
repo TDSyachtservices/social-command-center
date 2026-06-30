@@ -10,7 +10,7 @@ const BUILD_TIME = new Date().toISOString();
 router.get("/", async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ok", db: "connected", build: BUILD_TIME, routes: ["insights", "auth/instagram"] });
+    res.json({ status: "ok", db: "connected", build: BUILD_TIME, routes: ["insights", "auth/instagram", "webhook", "notifications"] });
   } catch {
     sendError(res, "DB_ERROR", "Database connection failed", undefined, 503);
   }
