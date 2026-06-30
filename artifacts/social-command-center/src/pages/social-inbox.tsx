@@ -42,8 +42,8 @@ export default function SocialInbox() {
         setRefreshKey(k => k + 1);
         if (!silent && result.totalNew > 0) {
           toast({
-            title: "Facebook sync complete",
-            description: `${result.totalNew} new comment${result.totalNew !== 1 ? "s" : ""} pulled from Facebook.`,
+            title: "Sync complete",
+            description: `${result.totalNew} new comment${result.totalNew !== 1 ? "s" : ""} pulled from connected accounts.`,
           });
         }
       } else if (!silent) {
@@ -80,7 +80,7 @@ export default function SocialInbox() {
             className="gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync Facebook"}
+            {syncing ? "Syncing…" : "Sync"}
           </Button>
         )}
       </div>

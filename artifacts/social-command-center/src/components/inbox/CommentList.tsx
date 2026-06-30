@@ -14,9 +14,16 @@ interface CommentListProps {
   refreshKey?: number;
 }
 
+const PLATFORM_TABS = [
+  { value: "all", label: "All" },
+  { value: "FACEBOOK", label: "Facebook" },
+  { value: "INSTAGRAM", label: "Instagram" },
+];
+
 export function CommentList({ selectedCommentId, onSelectComment, initialStatusFilter = "all", refreshKey = 0 }: CommentListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
+  const [platformFilter, setPlatformFilter] = useState("all");
   const [comments, setComments] = useState<MockComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +31,8 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
   useEffect(() => {
     setLoading(true);
     setError(null);
-    listComments({ limit: 100 }).then((apiComments) => {
+    const platform = platformFilter === "all" ? undefined : platformFilter;
+    listComments({ limit: 100, platform }).then((apiComments) => {
       if (apiComments !== null) {
         const normalized: MockComment[] = apiComments.map((c) => ({
           id: c.id,
@@ -47,7 +55,7 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
         setError("Could not load comments. Check your connection to the server.");
       }
     }).finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [refreshKey, platformFilter]);
 
   const filteredComments = comments.filter(comment => {
     const matchesSearch =
@@ -80,6 +88,21 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
 
   return (
     <div className="flex flex-col h-full bg-card border-r overflow-hidden">
+      <div className="flex border-b shrink-0">
+        {PLATFORM_TABS.map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => setPlatformFilter(tab.value)}
+            className={`flex-1 py-2 text-xs font-medium transition-colors ${
+              platformFilter === tab.value
+                ? "border-b-2 border-primary text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
       <div className="p-4 border-b space-y-3 shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
