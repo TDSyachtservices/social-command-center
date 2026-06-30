@@ -3,8 +3,8 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
   Link2, ScrollText, MessageCircle, Bot, Globe, Settings,
-  Image as ImageIcon, BarChart2, TrendingUp, Trophy,
-  FileBarChart, ChevronDown, Hash, AtSign,
+  Image as ImageIcon, BarChart2, ChevronDown, Hash, AtSign,
+  Instagram, Facebook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,16 +41,15 @@ const sections: NavSection[] = [
   {
     label: "KPI",
     links: [
-      { href: "/kpi?tab=overview",     label: "Overview",     icon: BarChart2    },
-      { href: "/kpi?tab=platform",     label: "By Platform",  icon: TrendingUp   },
-      { href: "/kpi?tab=top-content",  label: "Top Content",  icon: Trophy       },
-      { href: "/kpi?tab=reports",      label: "Reports",      icon: FileBarChart },
+      { href: "/kpi", label: "KPI Dashboard", icon: BarChart2 },
     ],
   },
   {
     label: "Engagement",
     links: [
       { href: "/social-inbox",  label: "Social Inbox",  icon: MessageSquare },
+      { href: "/instagram",     label: "Instagram",     icon: Instagram     },
+      { href: "/facebook",      label: "Facebook",      icon: Facebook      },
       { href: "/ai-assistant",  label: "AI Assistant",  icon: Bot           },
     ],
   },

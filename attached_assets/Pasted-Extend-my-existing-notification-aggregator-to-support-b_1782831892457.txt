@@ -1,0 +1,38 @@
+Extend my existing notification aggregator to support both Instagram and Facebook Page events in a unified backend, with two separate feed pages on the frontend.
+Webhook listener (single endpoint, GET + POST /webhook):
+
+GET: handle Meta's verification challenge as before.
+POST: inspect body.object to determine platform ("instagram" or "page"), then branch into platform-specific parsers.
+
+Instagram fields to handle: comments, mentions, messages.
+Facebook fields to handle: feed (comments/posts), mention, messages, messaging_postbacks, message_reactions, ratings (Page reviews, if enabled).
+
+
+Normalize every event — regardless of platform — into a common shape: id, platform ("instagram" | "facebook"), type (comment | mention | message | postback | reaction | review | follower_change), senderId, senderName, content, objectId, timestamp, isRead (default false).
+Store all normalized events in one shared notifications table, tagged by platform.
+Respond 200 immediately to all valid webhook POSTs.
+
+Polling job for follow/like counts (no webhook exists for either platform):
+
+Hourly scheduled job that checks both: Instagram account follower count, and Facebook Page follower/like count.
+Compare each against its last stored value; if changed, insert a synthetic follower_change notification tagged with the correct platform and the delta.
+Persist last-known counts per platform in a small stats table so it survives restarts.
+Keep total call volume well under each platform's rate limits.
+
+Feed API:
+
+GET /notifications?platform=instagram and /notifications?platform=facebook — filtered, newest first.
+GET /notifications/unread?platform= — same filter, unread only.
+POST /notifications/:id/read — mark as read.
+
+Frontend — two separate pages:
+
+/instagram — feed of Instagram-only notifications (comments, mentions, messages, follower_change), grouped by date, type icons, unread highlighting, mark-as-read.
+/facebook — same UI pattern, but for Facebook-only notifications, including the review/rating icon type.
+Both pages poll their respective filtered endpoint every 30 seconds.
+
+Config:
+
+Reuse existing Instagram env vars.
+Add Facebook-specific ones: FB_PAGE_ACCESS_TOKEN, FB_PAGE_ID (verify token can be shared with Instagram's if you're using one endpoint).
+Note in the Meta App dashboard: Facebook Page and Instagram webhooks are separate subscription objects (page and instagram) even when pointed at the same endpoint URL — both need their fields enabled there.

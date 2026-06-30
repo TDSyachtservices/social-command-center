@@ -23,6 +23,8 @@ import KpiMetric from "@/pages/kpi-metric";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import HashtagLibrary from "@/pages/hashtag-library";
 import MentionLibrary from "@/pages/mention-library";
+import InstagramPage from "@/pages/instagram";
+import FacebookPage from "@/pages/facebook";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +50,8 @@ function DashboardRouter() {
         <Route path="/kpi" component={KPI} />
         <Route path="/hashtag-library" component={HashtagLibrary} />
         <Route path="/mention-library" component={MentionLibrary} />
+        <Route path="/instagram" component={InstagramPage} />
+        <Route path="/facebook" component={FacebookPage} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

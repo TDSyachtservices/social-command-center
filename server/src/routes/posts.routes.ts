@@ -107,12 +107,6 @@ router.post(
       : [];
     const selectedPlatforms = new Set<string>(body.platforms);
 
-    // Index connected accounts by platform for O(1) lookup.
-    const accountByPlatform = new Map<string, (typeof selectedAccounts)[number]>();
-    for (const a of selectedAccounts) {
-      if (selectedPlatforms.has(a.platform)) accountByPlatform.set(a.platform, a);
-    }
-
     // Map each selected platform to its optional per-platform overrides (media + caption).
     const overrideByPlatform = new Map<string, { mediaUrl: string | null; mediaType: string | null; platformCaption: string | null }>();
     for (const m of body.platformMedia ?? []) {
@@ -123,16 +117,15 @@ router.post(
       });
     }
 
-    // Create one platform row per selected platform.  Rows without a connected
-    // account get accountId = null so that per-platform caption overrides survive
-    // save → edit even before the user connects an account.
-    const platformRows = [...selectedPlatforms].map((p) => ({
-      platform: p as import("@prisma/client").Platform,
-      accountId: accountByPlatform.get(p)?.id ?? null,
-      mediaUrl: overrideByPlatform.get(p)?.mediaUrl ?? null,
-      mediaType: overrideByPlatform.get(p)?.mediaType ?? null,
-      platformCaption: overrideByPlatform.get(p)?.platformCaption ?? null,
-    }));
+    const platformRows = selectedAccounts
+      .filter((a) => selectedPlatforms.has(a.platform))
+      .map((a) => ({
+        platform: a.platform,
+        accountId: a.id,
+        mediaUrl: overrideByPlatform.get(a.platform)?.mediaUrl ?? null,
+        mediaType: overrideByPlatform.get(a.platform)?.mediaType ?? null,
+        platformCaption: overrideByPlatform.get(a.platform)?.platformCaption ?? null,
+      }));
 
     // Post-level media stays as a fallback (list thumbnails, older clients,
     // publisher default). When the client only sends per-platform media, seed
@@ -196,67 +189,16 @@ router.patch(
       });
 
       // Apply per-platform overrides (media + caption) to existing platform rows.
-      // If no row exists yet for a platform (e.g. it was added after initial save),
-      // create one so caption overrides are never silently discarded.
       // Never touch rows already PUBLISHED/PUBLISHING — their content is locked in.
-      if (body.platformMedia && body.platformMedia.length > 0) {
-        const existingRows = await tx.scheduledPostPlatform.findMany({
-          where: { scheduledPostId: id },
-          select: { platform: true, status: true },
+      for (const m of body.platformMedia ?? []) {
+        await tx.scheduledPostPlatform.updateMany({
+          where: { scheduledPostId: id, platform: m.platform, status: { notIn: ["PUBLISHED", "PUBLISHING"] } },
+          data: {
+            mediaUrl: m.mediaUrl ?? null,
+            mediaType: m.mediaType ?? null,
+            platformCaption: m.platformCaption ?? null,
+          },
         });
-        const existingByPlatform = new Map(existingRows.map((r) => [r.platform, r]));
-
-        // Resolve connected accounts for this update (in case the user just connected one).
-        const updateAccountIds = body.accountIds ?? [];
-        const updateAccounts = updateAccountIds.length
-          ? await prisma.socialAccount.findMany({ where: { id: { in: updateAccountIds } } })
-          : [];
-        const updateAccountByPlatform = new Map(updateAccounts.map((a) => [a.platform, a]));
-
-        for (const m of body.platformMedia) {
-          const existing = existingByPlatform.get(m.platform);
-          if (existing) {
-            if (existing.status === "PUBLISHED" || existing.status === "PUBLISHING") continue;
-            await tx.scheduledPostPlatform.updateMany({
-              where: { scheduledPostId: id, platform: m.platform, status: { notIn: ["PUBLISHED", "PUBLISHING"] } },
-              data: {
-                ...(updateAccountByPlatform.has(m.platform)
-                  ? { accountId: updateAccountByPlatform.get(m.platform)!.id }
-                  : {}),
-                mediaUrl: m.mediaUrl ?? null,
-                mediaType: m.mediaType ?? null,
-                platformCaption: m.platformCaption ?? null,
-              },
-            });
-          } else {
-            await tx.scheduledPostPlatform.create({
-              data: {
-                scheduledPostId: id,
-                platform: m.platform,
-                accountId: updateAccountByPlatform.get(m.platform)?.id ?? null,
-                mediaUrl: m.mediaUrl ?? null,
-                mediaType: m.mediaType ?? null,
-                platformCaption: m.platformCaption ?? null,
-              },
-            });
-          }
-        }
-
-        // Also ensure rows exist for any newly-selected platforms that have no
-        // platformMedia entry (i.e. no override but platform is now selected).
-        if (body.platforms) {
-          for (const p of body.platforms) {
-            if (!existingByPlatform.has(p) && !body.platformMedia.some((m) => m.platform === p)) {
-              await tx.scheduledPostPlatform.create({
-                data: {
-                  scheduledPostId: id,
-                  platform: p,
-                  accountId: updateAccountByPlatform.get(p)?.id ?? null,
-                },
-              });
-            }
-          }
-        }
       }
 
       return tx.scheduledPost.findUnique({ where: { id }, include: { platforms: true } });

@@ -37,6 +37,9 @@ export function PlatformCaptionTabs({
               <TabsTrigger key={platform} value={platform} className="gap-2">
                 <PlatformBadge platform={platform} showText={false} className="border-none bg-transparent p-0" />
                 {platform}
+                {platformCaptions[platform]?.trim() ? (
+                  <span className="inline-flex items-center justify-center w-1.5 h-1.5 rounded-full bg-primary" title="Caption override active" />
+                ) : null}
                 {(overHard || overSoft) && (
                   <AlertTriangle className={`w-3 h-3 ${overHard ? "text-destructive" : "text-amber-500"}`} />
                 )}

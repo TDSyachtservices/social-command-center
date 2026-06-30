@@ -1,0 +1,42 @@
+Here's your prompt for the @mention feature:
+
+---
+
+**Replit Prompt: @Mention Feature for Social Media Scheduler**
+
+> Add an @mention management feature to my social media scheduling app (Facebook, Instagram, LinkedIn) with the following:
+>
+> **1. Mention Contacts Library**
+> A dedicated section to save and organize frequently mentioned accounts into named groups (e.g. "Partners", "Influencers", "Team"). Each contact entry stores: display name, platform-specific handle (e.g. @handle for Instagram, @name for LinkedIn), platform(s) they exist on, and an optional category/tag. Full CRUD — create, edit, delete contacts and groups.
+>
+> **2. Platform-Specific Rules & Validation**
+> - **Instagram:** Mentions use `@username` format — validate no spaces or special characters; max ~20 mentions per post (warn if exceeded); mentions only work for public accounts or mutual followers; show tip text about this limitation
+> - **Facebook:** Mentions use `@Name` and link to profiles/pages — note that mentions of personal profiles only work if they follow your page or are friends; pages can always be mentioned freely; soft warn if more than 10 mentions added
+> - **LinkedIn:** Mentions use `@FirstName LastName` format and must be a 1st-degree connection or a followed company page; hard limit of 25 mentions per post (warn and block if exceeded); show tip that over-mentioning can reduce reach
+> - All platforms: validate that mentions start with `@` and flag duplicates within the same post
+>
+> **3. Mention Picker at Post Creation**
+> - Triggered by typing `@` in the post composer — show a dropdown autocomplete pulling from the saved contacts library
+> - Autocomplete filters in real time as the user types after `@`
+> - Results show the contact's name, platform handle, and a color-coded platform badge
+> - Users can also browse/search the full contacts library via a panel or modal (same UX pattern as the hashtag picker)
+> - One-click "Add Group" to insert all mentions from a saved contact group
+> - If a saved contact doesn't have a handle for the currently selected platform, show a warning icon and disable or flag that contact
+>
+> **4. Platform-Aware Composer**
+> - When scheduling to multiple platforms at once, show a per-platform preview with the correct handle format per platform (e.g. same person shown as `@john.doe` on Instagram vs `@John Doe` on LinkedIn)
+> - Allow mention customization per platform within the same post draft
+> - Highlight any mentions that are invalid or missing for a given platform
+>
+> **5. UI Details**
+> - Mention chips in the composer with an X to remove individually, styled differently from hashtag chips (e.g. blue tint vs. purple)
+> - Color-coded platform badges: Instagram = purple gradient, Facebook = blue, LinkedIn = dark blue
+> - Real-time character count including mentions
+> - Inline warning tooltips on chips when a mention may not resolve correctly on a platform (e.g. "This handle isn't saved for LinkedIn")
+> - In the contacts library, show a completeness indicator per contact (e.g. which platforms have a saved handle vs. missing)
+>
+> Design should match the existing hashtag feature's style — clean, modern, professional tool feel (Buffer/Hootsuite style) with consistent UI patterns so both features feel native to the same app.
+
+---
+
+The last line ties it intentionally to the hashtag prompt so Replit keeps the design and UX consistent across both features. Let me know if you want to combine both into a single master prompt!

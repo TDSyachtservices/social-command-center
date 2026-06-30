@@ -1,0 +1,18 @@
+Right — that confirms it. The Permissions and Features page only lists permissions tied to the products/use cases your app actually has. Since your app only has Facebook Login attached, the Page management permissions like `pages_manage_posts` simply aren't in the list yet. (The two results you're seeing — Meta oEmbed Read and user_likes — are the only "pages"-related ones available to a login-only app.)
+
+To make `pages_manage_posts` appear, you need to add the Pages capability to the app. Two ways, depending on which your dashboard offers:
+
+**Option A — Add Product (matches your sidebar)**
+Click **Add Product** in the left sidebar (you showed it earlier). Look for **Pages API** and add it. Once added, go back to App Review → Permissions and Features and search `pages_manage_posts` again — it should now show up with the Request Advanced Access option.
+
+**Option B — Add a use case**
+If your dashboard nudges you toward use cases instead, look for **Use cases** in the sidebar and add **"Manage everything on your Page."** That use case bundles in `pages_manage_posts` (plus related Page permissions), which then surfaces them on the Permissions and Features page.
+
+A heads-up on what you'll likely run into: Meta has tightened this over the past couple of years, and the classic "Pages API" product isn't always offered as a standalone add-on anymore on newer apps — many now have to go through the use-case path. So if **Add Product** doesn't show a Pages option, go straight to the use-case route.
+
+If neither path shows a Pages option at all, it's usually one of these:
+
+- The app's **type** was set to something that doesn't support Pages (e.g. a "Gaming" or "None" type). You can check under App settings → Basic. This is hard to change after creation, and sometimes the cleaner fix is to create a fresh app and pick the **Business** type / Pages use case at creation time.
+- The app needs a **Business portfolio** connected before Page permissions unlock.
+
+Can you click **Add Product** and tell me what options it lists? That'll tell us immediately which path your app supports.

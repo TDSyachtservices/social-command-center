@@ -1,0 +1,43 @@
+Perform a full debug and optimization audit on this project. Stack: React + Vite + TypeScript frontend, Express 5 backend, Prisma + PostgreSQL, shadcn/ui components, TanStack Query, wouter routing.
+
+## 1. ROUTING & NAVIGATION
+- Audit all wouter <Route> definitions in the frontend
+- Verify every <Link> and navigation call points to a defined route
+- Identify any dead links, 404 routes, or routes with no component assigned
+- Check for missing or broken lazy-loaded components
+
+## 2. API ENDPOINTS
+- List all Express routes defined in /server
+- Verify each frontend API call (via TanStack Query or fetch) has a matching backend route
+- Check for mismatched HTTP methods, incorrect base URLs, or missing /api prefixes
+- Identify any endpoints returning 404, 500, or empty responses
+
+## 3. DATABASE & PRISMA
+- Confirm all Prisma models referenced in server code exist in schema.prisma
+- Check for missing relations, incorrect field names, or outdated generated client
+- Verify migrations are current (no drift between schema and DB)
+- Test each DB query for connection errors or missing error handling
+
+## 4. ENVIRONMENT VARIABLES
+- Identify every process.env reference in /server and every import.meta.env reference in /src
+- Cross-check against Replit Secrets — flag any that are missing or undefined at runtime
+
+## 5. COMPONENT & PAGE INTEGRITY
+- Verify every page component renders without runtime errors
+- Check all shadcn/ui components are properly imported and have required props
+- Identify any TanStack Query hooks with missing queryFn, incorrect keys, or no error/loading states handled
+- Flag any Recharts components with missing or malformed data props
+
+## 6. BUILD & PERFORMANCE
+- Run a Vite build and report any TypeScript or build errors
+- Identify unused imports, missing dependencies in package.json, or version conflicts
+- Flag any console.error or unhandled promise rejections in server logs
+
+## 7. OUTPUT FORMAT
+For each issue found, report:
+- Location (file + line if possible)
+- Issue type (broken link / missing route / DB error / env missing / component error / build error)
+- Severity: CRITICAL | WARNING | INFO
+- Recommended fix (one line)
+
+Fix all CRITICAL issues automatically. List WARNING and INFO items for review.

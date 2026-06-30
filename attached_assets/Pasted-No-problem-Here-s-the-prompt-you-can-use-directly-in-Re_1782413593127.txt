@@ -1,0 +1,38 @@
+No problem! Here's the prompt you can use directly in Replit yourself:
+
+---
+
+**Replit Prompt: Hashtag Feature for Social Media Scheduler**
+
+> Add a hashtag management feature to my social media scheduling app (Facebook, Instagram, LinkedIn) with the following:
+>
+> **1. Hashtag Library**
+> A dedicated section to create, save, and organize hashtags into named sets (e.g. "Marketing", "Brand"). Each set can be assigned to one or more platforms. Full CRUD — create, edit, delete hashtags and sets.
+>
+> **2. Platform-Specific Rules & Validation**
+> - **Instagram:** Hard limit of 30 hashtags — show live count (e.g. "23/30"), block submission if exceeded
+> - **Facebook:** Soft limit of 3–5 — show a warning (not a block) if user adds more than 5, with a tip that fewer hashtags perform better
+> - **LinkedIn:** Soft limit of 3–5 — show a warning if exceeded, with a tip to keep hashtags professional/industry-relevant
+> - All platforms: validate that hashtags start with `#`, contain no spaces or special characters (letters, numbers, underscores only)
+>
+> **3. Hashtag Picker at Post Creation**
+> - Inline panel or modal in the post composer to search and browse the saved hashtag library
+> - Autocomplete suggestions as the user types
+> - One-click "Add Set" to insert an entire hashtag group
+> - Show which platform(s) each set is recommended for
+>
+> **4. Platform-Aware Composer**
+> - When scheduling to multiple platforms at once, show a per-platform preview with platform-specific hashtag counts and rule indicators
+> - Allow hashtag customization per platform within the same post draft
+>
+> **5. UI Details**
+> - Hashtag chips with an X to remove individually
+> - Color-coded platform badges: Instagram = purple gradient, Facebook = blue, LinkedIn = dark blue
+> - Real-time character count including hashtags
+> - Placeholder "trending hashtags" suggestions in the picker panel
+>
+> Design should feel like a professional tool (Buffer/Hootsuite style) — clean, modern, dark or neutral sidebar with bright platform accent colors.
+
+---
+
+You can paste this directly into Replit Agent. Let me know if you'd like any part of it adjusted before you use it!

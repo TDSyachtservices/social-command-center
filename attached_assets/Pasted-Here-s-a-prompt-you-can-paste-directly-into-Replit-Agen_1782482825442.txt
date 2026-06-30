@@ -1,0 +1,32 @@
+Here's a prompt you can paste directly into Replit Agent:
+
+---
+
+**Add Facebook Webhook support for receiving Page comment notifications in real-time.**
+
+The goal is to get commenter names from Facebook Page post comments without needing the `pages_read_user_content` Advanced Access permission (which now requires Tech Provider status).
+
+**What's needed:**
+
+1. **Webhook verification endpoint** — `GET /webhooks/facebook` that responds to Meta's hub challenge verification (reads `hub.mode`, `hub.verify_token`, and `hub.challenge` from query params and returns the challenge if the verify token matches an env var `FB_WEBHOOK_VERIFY_TOKEN`)
+
+2. **Webhook event receiver** — `POST /webhooks/facebook` that receives Facebook `feed` subscription events, extracts comment data from the payload including:
+   - `from.name` (commenter name)
+   - `from.id` (commenter ID)
+   - `message` (comment text)
+   - `post_id`
+   - `created_time`
+   Then saves incoming comments to the existing database using the same comment schema already in use.
+
+3. **Subscribe the Page to webhooks** — a one-time setup call to `POST /{page-id}/subscribed_apps` using the Page access token with `subscribed_fields=feed` so Facebook knows to send comment events to our endpoint.
+
+4. **Update the existing `getComments` function** in `server/src/adapters/facebook.ts` — if the `from` field comes back empty/absent (which it currently does due to permission restrictions), fall back to looking up the comment in the database first before returning "Unknown".
+
+**Environment variables needed:**
+- `FB_WEBHOOK_VERIFY_TOKEN` — a random secret string we define (used to verify webhook calls are from Meta)
+
+The webhook URL that needs to be registered in the Meta App Dashboard will be `https://[our-replit-url]/webhooks/facebook`
+
+---
+
+That should give Replit Agent enough detail to implement everything cleanly. Once it's done, you'll just need to go into the Meta App Dashboard → Webhooks, add your Replit URL, enter the verify token, and subscribe to the `feed` field on the Pages object.

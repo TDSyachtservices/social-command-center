@@ -1,0 +1,192 @@
+🚀 Replit Prompt: Multi-Platform Mention Groups + Tracking System (Instagram, Facebook, LinkedIn)
+
+Build a feature for a social media scheduling web app that supports saved mention groups, mention resolution, and mention tracking across:
+
+Instagram
+Facebook
+LinkedIn
+
+The system must allow users to reuse mention groups across platforms while respecting each platform’s mention rules and limitations.
+
+🧠 Core Feature Overview
+
+Users must be able to:
+
+Create reusable Mention Groups
+Add platform-specific identities (Instagram, Facebook, LinkedIn)
+Attach mention groups to scheduled posts
+Resolve mentions at publish time per platform
+Detect and store inbound mentions (via API simulation or text parsing)
+View all mentions in a unified Mentions Inbox
+🏗️ Tech Stack
+Next.js (App Router)
+TypeScript
+Tailwind CSS
+Supabase (Auth + DB)
+🗄️ Database Schema (Supabase)
+mention_groups
+id (uuid, pk)
+user_id (uuid)
+name (text)
+created_at (timestamp)
+mention_group_members
+id (uuid)
+group_id (uuid fk)
+platform (text: instagram | facebook | linkedin)
+handle (text)
+display_name (text)
+platform_user_id (text nullable)
+linkedin_urn (text nullable) ← IMPORTANT for LinkedIn
+scheduled_posts
+id (uuid)
+user_id (uuid)
+content (text)
+scheduled_time (timestamp)
+platforms (text[]) → e.g. ["instagram","facebook","linkedin"]
+mention_group_ids (uuid[])
+mentions
+id (uuid)
+user_id (uuid)
+platform (text: instagram | facebook | linkedin)
+source_type (text: post | comment | article)
+source_text (text)
+author_handle (text)
+post_url (text)
+detected_handles (text[])
+created_at (timestamp)
+⚙️ Core System Logic
+1. Mention Group Builder UI
+
+Route: /mention-groups
+
+Users can:
+
+Create/edit/delete groups
+Add members per platform
+Fields per member:
+platform selector
+handle input
+display name
+LinkedIn URN field (only shown for LinkedIn)
+2. Scheduled Post Composer
+
+When creating a post:
+
+Allow selecting platforms (Instagram, Facebook, LinkedIn)
+Allow selecting mention groups
+Show preview of resolved mentions per platform
+
+Store only:
+
+group IDs
+selected platforms
+3. Mention Resolver Engine
+
+Create:
+
+resolveMentions(postId, platform)
+
+Behavior:
+Instagram
+Output: plain text @username
+Must ensure exact handle formatting
+Facebook
+Output: @PageName or plain tagged text
+Prefer page names for reliability
+LinkedIn
+Must prioritize:
+linkedin_urn if available
+fallback to @name style text
+Example internal representation:
+"urn:li:person:123456"
+Return:
+{
+  finalContent: string,
+  mentions: string[],
+  platform: string
+}
+4. LinkedIn-Specific Rules (IMPORTANT)
+API tagging is limited and often restricted
+Always store:
+linkedin_urn for people or companies
+If URN exists:
+prefer structured tagging
+If not:
+fallback to plain text @mention
+
+Treat LinkedIn as:
+
+“semi-structured mention system with optional enrichment”
+
+5. Inbound Mention Detection System
+
+Create endpoint:
+
+/api/scan-mentions
+
+Simulate ingestion for all platforms:
+
+Instagram / Facebook:
+Scan text for:
+/@([a-zA-Z0-9._]+)/g
+LinkedIn:
+Scan:
+@name
+company/page name matches (fallback logic)
+
+Store:
+
+detected handles
+platform
+source text
+post URL (if available)
+6. Mentions Inbox UI
+
+Route: /mentions
+
+Features:
+
+Unified feed of all mentions
+Filter by platform:
+Instagram
+Facebook
+LinkedIn
+Show:
+author
+content preview
+detected mentions
+platform badge
+“New in last 24h” indicator
+7. UI Design Requirements
+SaaS dashboard style
+Clean, modern (Buffer/Hootsuite inspired)
+Mention groups displayed as cards
+Sidebar:
+Dashboard
+Scheduled Posts
+Mention Groups
+Mentions Inbox
+🧩 Bonus Features
+“Convert mentions into group” button
+AI suggestion:
+“You mentioned this LinkedIn company 6 times—save as group?”
+Platform-aware preview chips:
+Instagram: @username
+Facebook: Page tags
+LinkedIn: URN or @name fallback
+🎯 Goal
+
+Build a multi-platform mention management system that:
+
+Reuses mention groups across platforms
+Handles platform-specific limitations (especially LinkedIn)
+Tracks inbound mentions in a unified inbox
+Feels like a lightweight Hootsuite + CRM hybrid
+
+If you want next level chaos (in a good way 😄), I can upgrade this into:
+
+real LinkedIn API strategy (what’s actually possible vs fake)
+or 
+a “universal identity system” so one person = IG + FB + LinkedIn mapping cleanly
+or 
+turn this into a Supabase edge function architecture so it scales cleanly without spaghetti 🧵

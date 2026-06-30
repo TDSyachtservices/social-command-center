@@ -49,7 +49,7 @@ export interface ApiPost {
   publishedAt: string | null;
   mediaUrl: string | null;
   mediaType: string | null;
-  platforms: Array<{ platform: string; status: string; accountId: string; mediaUrl?: string | null; mediaType?: string | null }>;
+  platforms: Array<{ platform: string; status: string; accountId: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,7 +86,7 @@ export async function createPost(body: {
   scheduledAt?: string;
   mediaUrl?: string;
   mediaType?: string;
-  platformMedia?: Array<{ platform: string; mediaUrl?: string | null; mediaType?: string | null }>;
+  platformMedia?: Array<{ platform: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
 }): Promise<ApiPost | null> {
   const result = await apiFetch<ApiPost>("/api/posts", {
     method: "POST",
@@ -756,6 +756,70 @@ export async function publishWebsiteDraft(postId: string): Promise<boolean> {
 export async function getWebsiteSyncLogs(): Promise<unknown[] | null> {
   const result = await apiFetch<unknown[]>("/api/website/sync-logs");
   return result.ok ? result.data : null;
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface ApiNotification {
+  id: string;
+  platform: string;
+  accountId: string | null;
+  externalId: string | null;
+  type: string;
+  title: string;
+  body: string | null;
+  isRead: boolean;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export async function listNotifications(params?: {
+  platform?: string;
+  type?: string;
+  unreadOnly?: boolean;
+  page?: number;
+  limit?: number;
+}): Promise<ApiNotification[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.type) qs.set("type", params.type);
+  if (params?.unreadOnly) qs.set("unreadOnly", "true");
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const result = await apiFetch<ApiNotification[]>(`/api/notifications?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getNotificationUnreadCount(platform?: string): Promise<number> {
+  const qs = platform ? `?platform=${platform}` : "";
+  const result = await apiFetch<{ count: number }>(`/api/notifications/unread-count${qs}`);
+  return result.ok ? result.data.count : 0;
+}
+
+export async function markNotificationRead(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/notifications/${id}/read`, { method: "PATCH" });
+  return result.ok;
+}
+
+export async function markAllNotificationsRead(platform?: string): Promise<boolean> {
+  const result = await apiFetch<unknown>("/api/notifications/read-all", {
+    method: "POST",
+    body: JSON.stringify(platform ? { platform } : {}),
+  });
+  return result.ok;
+}
+
+export async function getLatestPlatformStats(
+  platform: string,
+  accountId: string,
+): Promise<number | null> {
+  const qs = new URLSearchParams({ platform, accountId });
+  const result = await apiFetch<Array<{ followersCount: number; polledAt: string }>>(
+    `/api/notifications/platform-stats?${qs}`,
+  );
+  if (!result.ok || result.data.length === 0) return null;
+  return result.data[0].followersCount;
 }
 
 // ─── Health check ─────────────────────────────────────────────────────────────

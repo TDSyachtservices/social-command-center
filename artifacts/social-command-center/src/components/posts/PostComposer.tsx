@@ -17,6 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { listAccounts, createPost, updatePost, schedulePost, publishPost, getPost, type ApiAccount } from "@/lib/api";
+import { validatePostContent, hasBlockingErrors } from "@/lib/platformValidation";
+import { PlatformValidationNotice } from "./PlatformValidationNotice";
 
 const SERVER_TO_PLATFORM: Record<string, Platform> = {
   FACEBOOK: "Facebook",
@@ -36,6 +38,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [masterCaption, setMasterCaption] = useState("");
   const [platforms, setPlatforms] = useState<Platform[]>(["Facebook"]);
   const [platformCaptions, setPlatformCaptions] = useState<Record<Platform, string>>({} as Record<Platform, string>);
+  const [touchedCaptionPlatforms, setTouchedCaptionPlatforms] = useState<Set<Platform>>(new Set());
   const [platformHashtags, setPlatformHashtags] = useState<Record<string, string[]>>({});
   const [platformMentions, setPlatformMentions] = useState<Record<string, string[]>>({});
   const [platformMedia, setPlatformMedia] = useState<Record<string, PlatformMediaValue | null>>({});
@@ -67,10 +70,16 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         setPlatforms(postPlatforms.length > 0 ? postPlatforms : ["Facebook"]);
 
         const loadedMedia: Record<string, PlatformMediaValue | null> = {};
+        const loadedCaptions: Record<string, string> = {};
         for (const pl of post.platforms) {
           const key = SERVER_TO_PLATFORM[pl.platform.toUpperCase()];
-          if (key && pl.mediaUrl) {
-            loadedMedia[key] = { url: pl.mediaUrl, type: pl.mediaType === "video" ? "video" : "image" };
+          if (key) {
+            if (pl.mediaUrl) {
+              loadedMedia[key] = { url: pl.mediaUrl, type: pl.mediaType === "video" ? "video" : "image" };
+            }
+            if (pl.platformCaption) {
+              loadedCaptions[key] = pl.platformCaption;
+            }
           }
         }
         // Older posts only carry post-level media — apply it to every platform.
@@ -80,6 +89,8 @@ export function PostComposer({ editPostId }: PostComposerProps) {
           }
         }
         setPlatformMedia(loadedMedia);
+        setPlatformCaptions(loadedCaptions as Record<Platform, string>);
+        setTouchedCaptionPlatforms(new Set(Object.keys(loadedCaptions) as Platform[]));
         if (post.scheduledAt) {
           const d = new Date(post.scheduledAt);
           setDate(d);
@@ -97,6 +108,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const handlePlatformCaptionChange = (platform: Platform, caption: string) => {
     setPlatformCaptions(prev => ({ ...prev, [platform]: caption }));
+    setTouchedCaptionPlatforms(prev => new Set([...prev, platform]));
   };
 
   const handleHashtagChange = (platform: string, tags: string[]) => {
@@ -130,11 +142,12 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const buildPlatformMedia = () =>
     platforms
-      .filter((p) => platformMedia[p]?.url)
+      .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p))
       .map((p) => ({
         platform: p.toUpperCase(),
-        mediaUrl: platformMedia[p]!.url,
-        mediaType: platformMedia[p]!.type,
+        mediaUrl: platformMedia[p]?.url ?? null,
+        mediaType: platformMedia[p]?.type ?? null,
+        platformCaption: platformCaptions[p]?.trim() || null,
       }));
 
   const buildPostBody = () => {
@@ -164,7 +177,12 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const accountIds = getAccountIds();
   const noConnectedAccounts = platforms.length > 0 && accountIds.length === 0;
-  const isFormValid = title.length > 0 && platforms.length > 0 && masterCaption.length > 0 && !noConnectedAccounts;
+  const hasAnyMedia = platforms.some((p) => !!platformMedia[p]?.url);
+  const captionRequired = !hasAnyMedia;
+  const isFormValid = title.length > 0 && platforms.length > 0 && (masterCaption.length > 0 || hasAnyMedia) && !noConnectedAccounts;
+
+  const validationIssues = validatePostContent({ platforms, masterCaption, platformCaptions, platformHashtags, platformMedia });
+  const hasContentErrors = hasBlockingErrors(validationIssues);
 
   const handleSaveDraft = async () => {
     setIsSubmitting(true);
@@ -187,6 +205,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   };
 
   const handleSchedule = async () => {
+    if (hasContentErrors) {
+      toast({ title: "Can't schedule yet", description: "Fix the highlighted platform requirements first.", variant: "destructive" });
+      return;
+    }
     if (!date) {
       toast({ title: "No date selected", description: "Pick a schedule date before scheduling.", variant: "destructive" });
       return;
@@ -221,6 +243,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   };
 
   const handlePublishNow = async () => {
+    if (hasContentErrors) {
+      toast({ title: "Can't publish yet", description: "Fix the highlighted platform requirements first.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const body = { ...buildPostBody(), status: "DRAFT" };
@@ -285,9 +311,12 @@ export function PostComposer({ editPostId }: PostComposerProps) {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Master Caption <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">
+                Master Caption{captionRequired && <span className="text-destructive"> *</span>}
+                {!captionRequired && <span className="text-muted-foreground font-normal text-xs ml-1">(optional — you have media)</span>}
+              </label>
               <Textarea
-                placeholder="Write your main message here..."
+                placeholder={captionRequired ? "Write your main message here..." : "Caption (optional)…"}
                 className="min-h-[120px]"
                 value={masterCaption}
                 onChange={e => setMasterCaption(e.target.value)}
@@ -350,16 +379,18 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               </div>
             </div>
 
+            <PlatformValidationNotice issues={validationIssues} />
+
             <div className="flex flex-wrap gap-3 pt-6 border-t">
               <Button
-                disabled={!isFormValid || isSubmitting}
+                disabled={!isFormValid || isSubmitting || hasContentErrors}
                 className="flex-1 min-w-[150px]"
                 onClick={handleSchedule}
               >
                 {isSubmitting ? "Saving…" : isEditMode ? "Reschedule" : "Schedule Post"}
               </Button>
               <Button
-                disabled={!isFormValid || isSubmitting}
+                disabled={!isFormValid || isSubmitting || hasContentErrors}
                 variant="outline"
                 className="flex-1 min-w-[150px]"
                 onClick={handlePublishNow}

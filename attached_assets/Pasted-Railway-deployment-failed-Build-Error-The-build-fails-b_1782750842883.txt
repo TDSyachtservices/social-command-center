@@ -1,0 +1,145 @@
+Railway deployment failed — Build Error
+
+The build fails because the `main` branch is missing critical files that exist on the `backend-foundation` branch: `server/railway.json`, `server/package.json`, `server/tsconfig.json`, and `server/package-lock.json`. Without `railway.json`, Railway auto-detects the Dockerfile in `server/` and tries to build with it, but the Dockerfile references files like `package.json`, `tsconfig.json`, and `prisma/` that do not exist in the `server/` directory on `main`. Merging `backend-foundation` into `main` or manually copying the missing files will resolve all build failures.
+
+Repository: https://github.com/TDSyachtservices/social-command-center
+Branch: main · Commit: ec865d6 — Fix Dockerfile: prefix all COPY paths with server/ (Railway uses repo root as build context)
+
+Railway mounts the entire monorepo as the Docker build context, not just
+the server/ subdirectory. All COPY commands that reference server files
+must use the server/ prefix (e.g. COPY server/src ./src).
+
+This was the root cause of all previous build failures:
+  COPY tsconfig.json ./ → not found (it's at server/tsconfig.json)
+  COPY prisma ./prisma → not found (it's at server/prisma/)
+Root directory: /server
+Deployment ID: 98ec39c2-9da0-4d4b-8de5-cb0c2a36cc34
+Service ID: 5e79f34e-4bc7-4af5-bcfb-9050ee37f697
+Environment ID: 59beb42d-734d-42dc-94ff-e50980773c53
+
+---
+
+## Problem
+The service deploys from the `main` branch with rootDirectory `/server`. Railway auto-detects `server/Dockerfile` and uses the Dockerfile builder because no `railway.json` exists on `main` to override the builder. The Dockerfile fails because its COPY commands use a `server/` prefix (e.g., `COPY server/src ./src`), but the Docker build context is already scoped to the `server/` directory — so Docker looks for `server/server/src`, which does not exist.
+
+Build error: `Build Failed: failed to calculate checksum of ref: "/server/src": not found`
+
+The SNAPSHOT stage succeeded. The BUILD stage failed immediately. The previous deployment (53828da9) from `main` also failed with `"/tsconfig.json": not found` — the same root cause. The last successful deployment (07e76b36) was from the `backend-foundation` branch, which has `server/railway.json` forcing `"builder": "RAILPACK"` and all required server files.
+
+## Diagnosis
+The `main` branch is missing four critical files that exist on `backend-foundation`:
+1. `server/railway.json` — forces Railpack builder (bypasses Dockerfile), sets startCommand to `node dist/index.js`, preDeployCommand to `npx prisma migrate deploy`, and healthcheckPath to `/api/health`
+2. `server/package.json` — declares server dependencies (express, prisma, etc.) needed for Railpack to detect Node.js and install packages
+3. `server/tsconfig.json` — TypeScript compiler config needed for the build step
+4. `server/package-lock.json` — npm lockfile needed for deterministic installs
+
+Without `railway.json`, Railway sees the Dockerfile and uses it. The Dockerfile's COPY commands fail because the referenced files don't exist in the build context.
+
+## Fix
+The recommended fix is to merge the `backend-foundation` branch into `main`, which will bring all missing files at once.
+
+Alternatively, create the following files manually:
+
+**File 1: `server/railway.json`** (create new file)
+Content from `backend-foundation`:
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildEnvironment": "V3"
+  },
+  "deploy": {
+    "preDeployCommand": "npx prisma migrate deploy",
+    "startCommand": "node dist/index.js",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 30,
+    "runtime": "V2",
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "useLegacyStacker": false,
+    "ipv6EgressEnabled": false,
+    "multiRegionConfig": {
+      "us-west2": {
+        "numReplicas": 1
+      }
+    },
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+**File 2: `server/package.json`** (create new file)
+Content from `backend-foundation`:
+```json
+{
+  "name": "social-command-center-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Social Command Center — Express + Prisma API server",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "prisma generate && tsc --project tsconfig.json",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:prod": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset --force",
+    "worker:media": "echo 'Media worker not yet implemented'",
+    "worker:publish": "echo 'Publish worker not yet implemented'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2",
+    "@prisma/client": "^6.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "openai": "^6.45.0",
+    "pino": "^9.7.0",
+    "pino-http": "^10.5.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "pino-pretty": "^13.1.0",
+    "prisma": "^6.9.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.0"
+  }
+}
+```
+
+**File 3: `server/tsconfig.json`** (create new file)
+Content from `backend-foundation`:
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "prisma"]
+}
+```
+
+**Step 4:** Run `cd server && npm install` locally to generate `server/package-lock.json`, then commit it. This step cannot be performed by a code agent.
+
+**Step 5:** Ensure the `server/prisma/` directory with the Prisma schema file exists on `main`. Copy it from `backend-foundation` if needed. This is required for `prisma generate` and `prisma migrate deploy` to work.

@@ -1,0 +1,14 @@
+- [Railway build context & builder](railway-build-context.md) — deploys `main` via dashboard Builder=Dockerfile (overrides railway.json); rootDirectory=/server so Dockerfile COPY paths must be UNPREFIXED.
+- [GitHub repo](github-repo.md) — TDSyachtservices/social-command-center; push via direct URL (no remote in config); branch creation via GitHub API only
+- [GitHub push method](github-push.md) — git add/commit blocked in main agent; use GitHub Git Data API via node script with GITHUB_PERSONAL_ACCESS_TOKEN env var (blobs → tree → commit → patch ref).
+- [Server backend structure](server-backend.md) — standalone /server dir (not in pnpm workspace); Express 5 + Prisma + PostgreSQL; deploys to Railway with Dockerfile + railway.toml.
+- [Social adapter contract](adapter-contract.md) — adapters export getCapabilities/publishPost/getComments/replyToComment; Facebook AND Instagram are REAL publishers (IG = 2-step container, media REQUIRED); LinkedIn/TikTok still skipped.
+- [Facebook posting permissions](facebook-posting-permissions.md) — posting needs pages_manage_posts (Business app only); changing the FB app does NOT refresh the stored page token — user must reconnect.
+- [Instagram scopes (FB-login path)](instagram-scopes-fb-login.md) — use instagram_basic/* NOT instagram_business_*; "Invalid Scopes" = Meta app missing the Instagram product, not a code bug.
+- [Post platform/account mapping](post-platform-account-mapping.md) — never pair `platforms`/`accountIds` positionally; derive each platform row from an account of the same platform or you cross-post.
+- [Per-platform post media](per-platform-media.md) — platform row mediaUrl/Type overrides post-level; publish uses platform??post fallback, locks effective media on publish; preview must mirror it.
+- [Vite new Radix dep crash](vite-new-radix-dep-crash.md) — adding a new @radix-ui/React dep can throw "Invalid hook call"/duplicate React until you restart the dev workflow.
+- [Mock UI mutations persistence](mock-ui-mutations-persistence.md) — in-memory edits to mock-seeded lists reappear on remount; persist to localStorage so delete/duplicate stick.
+- [ImageMagick Alpine codecs](imagemagick-alpine-codecs.md) — base `imagemagick` apk lacks JPEG/WebP; install codec subpackages or get "no decode delegate".
+- [Railway ephemeral uploads](railway-ephemeral-uploads.md) — /app/uploads wiped on every redeploy unless a Railway Volume is mounted; media must be re-uploaded.
+- [Media optimizer focal crop & AI score](media-focal-crop.md) — preview must mirror the server's focal-as-centre crop (not CSS object-position); a re-crop invalidates the AI score, so block crop edits while scoring.

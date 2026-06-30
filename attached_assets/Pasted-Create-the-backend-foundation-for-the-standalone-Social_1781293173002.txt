@@ -1,0 +1,209 @@
+Create the backend foundation for the standalone Social Command Center app.
+
+Use:
+- Node.js with Express or Fastify
+- TypeScript
+- Prisma
+- PostgreSQL
+- Railway deployment
+- GitHub source control
+
+Do not add media processing yet.
+Do not add Sharp yet.
+Do not add FFmpeg yet.
+Do not connect live social APIs yet.
+Do not implement OAuth yet.
+
+Goal:
+Create the backend API, Prisma schema, database models, seed data, health route, mock data endpoints, and frontend API connection layer.
+
+Required backend structure:
+/server
+  /src
+    index.ts
+    app.ts
+    routes/
+      health.routes.ts
+      posts.routes.ts
+      media.routes.ts
+      accounts.routes.ts
+      scheduler.routes.ts
+      inbox.routes.ts
+      logs.routes.ts
+      settings.routes.ts
+      ai.routes.ts
+      website.routes.ts
+    services/
+      scheduler.service.ts
+      publish.service.ts
+      token.service.ts
+      account.service.ts
+      inbox.service.ts
+      ai.service.ts
+      website.service.ts
+    adapters/
+      facebook.adapter.ts
+      instagram.adapter.ts
+      linkedin.adapter.ts
+      tiktok.adapter.ts
+      website.adapter.ts
+    db/
+      prisma.ts
+      seed.ts
+    utils/
+      response.ts
+      errors.ts
+      auth.ts
+      validation.ts
+      ids.ts
+      time.ts
+      logger.ts
+  prisma/
+    schema.prisma
+  package.json
+  README.md
+
+Create .env.example:
+DATABASE_URL=
+PORT=3001
+FRONTEND_URL=
+API_BASE_URL=
+INTERNAL_API_KEY=
+N8N_WEBHOOK_SECRET=
+TOKEN_ENCRYPTION_KEY=
+S3_ENDPOINT=
+S3_REGION=
+S3_BUCKET=
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_PUBLIC_BASE_URL=
+S3_FORCE_PATH_STYLE=true
+LOCAL_AI_ENDPOINT=
+LOCAL_AI_API_KEY=
+META_CLIENT_ID=
+META_CLIENT_SECRET=
+LINKEDIN_CLIENT_ID=
+LINKEDIN_CLIENT_SECRET=
+TIKTOK_CLIENT_ID=
+TIKTOK_CLIENT_SECRET=
+
+Create Prisma models:
+- User
+- SocialAccount
+- MediaAsset
+- MediaVersion
+- MediaProcessingJob
+- ScheduledPost
+- ScheduledPostPlatform
+- PublishLog
+- SocialComment
+- SocialCommentReply
+- SocialInboxNote
+- SocialInboxSyncLog
+- Setting
+- AuditLog
+
+Enums:
+- Platform: FACEBOOK, INSTAGRAM, LINKEDIN, TIKTOK, WEBSITE
+- PostStatus: DRAFT, SCHEDULED, PUBLISHING, PUBLISHED, FAILED, ARCHIVED
+- PlatformPostStatus: PENDING, PUBLISHING, PUBLISHED, FAILED, SKIPPED, NEEDS_REVIEW
+- ProcessingStatus: UPLOADED, PENDING, PROCESSING, READY, NEEDS_REVIEW, FAILED, NEEDS_EXTERNAL_PROCESSING
+- ValidationStatus: READY, WARNING, FAILED, NEEDS_REVIEW, NEEDS_EXTERNAL_PROCESSING
+- CommentStatus: NEW, REPLIED, NEEDS_FOLLOW_UP, RESOLVED, HIDDEN, IGNORED, ESCALATED, FAILED_REPLY
+- CommentPriority: LOW, NORMAL, HIGH, URGENT, SALES_OPPORTUNITY
+
+Create API endpoints:
+
+Health:
+GET /api/health
+
+Posts:
+GET /api/posts
+POST /api/posts
+GET /api/posts/:id
+PUT /api/posts/:id
+DELETE /api/posts/:id
+POST /api/posts/:id/schedule
+POST /api/posts/:id/publish
+POST /api/posts/:id/retry
+
+Media:
+GET /api/media
+GET /api/media/:id
+GET /api/media/:id/versions
+
+Scheduler / n8n:
+GET /api/scheduled-posts/due?limit=10
+POST /api/scheduled-posts/:id/publish
+POST /api/webhooks/n8n/publish-due
+
+Social Inbox:
+GET /api/social-inbox/comments
+GET /api/social-inbox/comments/:id
+POST /api/social-inbox/comments/:id/reply
+POST /api/social-inbox/comments/:id/status
+POST /api/social-inbox/comments/:id/hide
+POST /api/social-inbox/comments/:id/assign
+POST /api/social-inbox/comments/:id/note
+POST /api/social-inbox/sync
+GET /api/social-inbox/logs
+
+Accounts:
+GET /api/accounts
+GET /api/accounts/:id
+POST /api/accounts/:platform/connect-mock
+POST /api/accounts/:id/disconnect
+POST /api/accounts/:id/check
+GET /api/accounts/:id/capabilities
+
+Logs:
+GET /api/logs/publishing
+GET /api/logs/comments
+GET /api/logs/audit
+
+Settings:
+GET /api/settings
+PUT /api/settings
+
+AI stubs:
+POST /api/ai/generate-caption
+POST /api/ai/generate-reply
+POST /api/ai/analyze-comment
+POST /api/ai/create-website-draft
+
+Website stubs:
+GET /api/website/status
+POST /api/website/drafts
+POST /api/website/publish
+GET /api/website/sync-logs
+
+Requirements:
+- Use consistent API response format.
+- Add CORS using FRONTEND_URL.
+- Add internal API key protection for n8n endpoints.
+- Add structured errors.
+- Add request validation where practical.
+- Add Prisma seed script with mock admin user, mock accounts, mock posts, mock comments, mock logs, mock settings, and mock media records.
+- Add health check that confirms database connection.
+- Add README with local setup, Railway setup, Prisma migration, seed command, and deployment steps.
+- Update frontend API layer so existing screens load backend data where practical, with fallback to mock data if backend is unavailable.
+
+Do not:
+- connect live social APIs
+- add real OAuth
+- add Sharp
+- add FFmpeg
+- implement real uploads yet
+- implement real publishing
+- remove existing frontend functionality
+- break the standalone UI
+
+Deliver:
+- working backend foundation
+- Prisma schema
+- seed script
+- health route
+- mock API endpoints
+- frontend connected to backend where practical
+- no TypeScript errors
+- no console errors

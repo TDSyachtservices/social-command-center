@@ -19,6 +19,8 @@ import aiRouter from "./routes/ai.routes.js";
 import websiteRouter from "./routes/website.routes.js";
 import authRouter from "./routes/auth.routes.js";
 import insightsRouter from "./routes/insights.routes.js";
+import webhookRouter from "./routes/webhook.routes.js";
+import notificationsRouter from "./routes/notifications.routes.js";
 
 const app = express();
 
@@ -101,6 +103,8 @@ app.use("/api/ai", aiRouter);
 app.use("/api/website", websiteRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/insights", insightsRouter);
+app.use("/api/webhook", webhookRouter);
+app.use("/api/notifications", notificationsRouter);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

@@ -7,7 +7,291 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ──────────────────────────────────────────────────────────────────
+model User {
+  id        String          @id @default(cuid())
+  email     String          @unique
+  name      String
+  role      String          @default("admin")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  auditLogs AuditLog[]
+  posts     ScheduledPost[]
+}
+
+model SocialAccount {
+  id                     String                  @id @default(cuid())
+  platform               Platform
+  accountName            String
+  accountId              String
+  connectionStatus       String                  @default("not_connected")
+  lastSync               DateTime?
+  postingCapability      Boolean                 @default(false)
+  commentReadCapability  Boolean                 @default(false)
+  commentReplyCapability Boolean                 @default(false)
+  moderationCapability   Boolean                 @default(false)
+  tokenEncrypted         String?
+  tokenExpiresAt         DateTime?
+  scopes                 String[]
+  metadata               Json?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  postPlatforms          ScheduledPostPlatform[]
+  comments               SocialComment[]
+  syncLogs               SocialInboxSyncLog[]
+  notifications          Notification[]
+  platformStats          PlatformStats[]
+}
+
+model MediaAsset {
+  id                      String               @id @default(cuid())
+  originalFileName        String
+  originalFileType        String
+  originalMimeType        String
+  originalSizeBytes       BigInt
+  originalWidth           Int?
+  originalHeight          Int?
+  originalDurationSeconds Float?
+  originalStorageKey      String?
+  originalPublicUrl       String?
+  uploadedBy              String?
+  processingStatus        ProcessingStatus     @default(UPLOADED)
+  qualityScoreLabel       String?
+  validationStatus        ValidationStatus     @default(NEEDS_REVIEW)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  processingJobs          MediaProcessingJob[]
+  versions                MediaVersion[]
+}
+
+model MediaVersion {
+  id                     String               @id @default(cuid())
+  mediaAssetId           String
+  platform               Platform
+  placement              String
+  width                  Int
+  height                 Int
+  aspectRatio            String
+  format                 String
+  mimeType               String
+  fileSizeBytes          BigInt?
+  storageKey             String?
+  publicUrl              String?
+  processingStatus       ProcessingStatus     @default(PENDING)
+  cropMode               String               @default("fit")
+  focalPointJson         Json?
+  safeZoneWarningsJson   Json?
+  qualityScore           Float?
+  qualityScoreLabel      String?
+  validationStatus       ValidationStatus     @default(NEEDS_REVIEW)
+  validationErrorsJson   Json?
+  validationWarningsJson Json?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  processingJobs         MediaProcessingJob[]
+  mediaAsset             MediaAsset           @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+}
+
+model MediaProcessingJob {
+  id             String        @id @default(cuid())
+  mediaAssetId   String
+  mediaVersionId String?
+  jobType        String
+  status         String        @default("queued")
+  attempts       Int           @default(0)
+  errorMessage   String?
+  queuedAt       DateTime      @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  updatedAt      DateTime      @updatedAt
+  mediaAsset     MediaAsset    @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  mediaVersion   MediaVersion? @relation(fields: [mediaVersionId], references: [id])
+}
+
+model ScheduledPost {
+  id            String                  @id @default(cuid())
+  title         String
+  masterCaption String
+  status        PostStatus              @default(DRAFT)
+  scheduledAt   DateTime?
+  publishedAt   DateTime?
+  mediaUrl      String?
+  mediaType     String?
+  createdBy     String?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  publishLogs   PublishLog[]
+  user          User?                   @relation(fields: [createdBy], references: [id])
+  platforms     ScheduledPostPlatform[]
+}
+
+model ScheduledPostPlatform {
+  id              String             @id @default(cuid())
+  scheduledPostId String
+  accountId       String
+  platform        Platform
+  status          PlatformPostStatus @default(PENDING)
+  externalPostId  String?
+  platformCaption String?
+  publishedAt     DateTime?
+  errorMessage    String?
+  retryCount      Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  account         SocialAccount      @relation(fields: [accountId], references: [id])
+  scheduledPost   ScheduledPost      @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
+}
+
+model PublishLog {
+  id              String         @id @default(cuid())
+  scheduledPostId String?
+  postTitle       String
+  platform        Platform
+  action          String
+  status          String
+  externalPostId  String?
+  apiResponse     String?
+  errorMessage    String?
+  timestamp       DateTime       @default(now())
+  scheduledPost   ScheduledPost? @relation(fields: [scheduledPostId], references: [id])
+}
+
+model SocialComment {
+  id                  String               @id @default(cuid())
+  platform            Platform
+  accountId           String?
+  accountName         String
+  commenterName       String
+  commenterHandle     String?
+  commentText         String
+  originalPostTitle   String?
+  originalPostCaption String?
+  externalCommentId   String?
+  timestamp           DateTime             @default(now())
+  status              CommentStatus        @default(NEW)
+  priority            CommentPriority      @default(NORMAL)
+  replyCount          Int                  @default(0)
+  assignedUser        String?
+  mediaUrl            String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  account             SocialAccount?       @relation(fields: [accountId], references: [id])
+  replies             SocialCommentReply[]
+  notes               SocialInboxNote[]
+}
+
+model SocialCommentReply {
+  id              String        @id @default(cuid())
+  commentId       String
+  replyText       String
+  sentBy          String?
+  sentAt          DateTime      @default(now())
+  status          String        @default("sent")
+  externalReplyId String?
+  errorMessage    String?
+  comment         SocialComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+}
+
+model SocialInboxNote {
+  id        String        @id @default(cuid())
+  commentId String
+  noteText  String
+  createdBy String?
+  createdAt DateTime      @default(now())
+  comment   SocialComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+}
+
+model SocialInboxSyncLog {
+  id               String         @id @default(cuid())
+  platform         Platform
+  accountId        String?
+  actionType       String
+  status           String
+  relatedPost      String?
+  relatedCommenter String?
+  errorMessage     String?
+  timestamp        DateTime       @default(now())
+  account          SocialAccount? @relation(fields: [accountId], references: [id])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  resourceType String
+  resourceId   String?
+  details      Json?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+  user         User?    @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  platform   String
+  accountId  String?
+  externalId String?
+  type       String
+  title      String
+  body       String?
+  payload    Json?
+  isRead     Boolean   @default(false)
+  occurredAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  account SocialAccount? @relation(fields: [accountId], references: [id])
+
+  @@unique([platform, externalId])
+  @@index([platform, isRead])
+  @@index([createdAt])
+}
+
+model PlatformStats {
+  id             String   @id @default(cuid())
+  platform       String
+  accountId      String
+  followersCount Int
+  polledAt       DateTime @default(now())
+
+  account SocialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, polledAt])
+}
+
+model hashtag_sets {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  platforms  String[] @default([])
+  hashtags   String[] @default([])
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model mention_contacts {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  display_name String
+  category     String   @default("")
+  platforms    String[] @default([])
+  handles      Json     @default("{}")
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  linkedin_urn String?
+}
+
+model mention_groups {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  contact_ids String[] @default([]) @db.Uuid
+  platforms   String[] @default([])
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+}
 
 enum Platform {
   FACEBOOK
@@ -72,245 +356,4 @@ enum CommentPriority {
   HIGH
   URGENT
   SALES_OPPORTUNITY
-}
-
-// ─── Models ─────────────────────────────────────────────────────────────────
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      String   @default("admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  posts     ScheduledPost[]
-  auditLogs AuditLog[]
-}
-
-model SocialAccount {
-  id                     String    @id @default(cuid())
-  platform               Platform
-  accountName            String
-  accountId              String
-  connectionStatus       String    @default("not_connected")
-  lastSync               DateTime?
-  postingCapability      Boolean   @default(false)
-  commentReadCapability  Boolean   @default(false)
-  commentReplyCapability Boolean   @default(false)
-  moderationCapability   Boolean   @default(false)
-  tokenEncrypted         String?
-  tokenExpiresAt         DateTime?
-  scopes                 String[]
-  metadata               Json?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-
-  postPlatforms ScheduledPostPlatform[]
-  comments      SocialComment[]
-  syncLogs      SocialInboxSyncLog[]
-}
-
-model MediaAsset {
-  id                      String           @id @default(cuid())
-  originalFileName        String
-  originalFileType        String
-  originalMimeType        String
-  originalSizeBytes       BigInt
-  originalWidth           Int?
-  originalHeight          Int?
-  originalDurationSeconds Float?
-  originalStorageKey      String?
-  originalPublicUrl       String?
-  uploadedBy              String?
-  processingStatus        ProcessingStatus @default(UPLOADED)
-  qualityScoreLabel       String?
-  validationStatus        ValidationStatus @default(NEEDS_REVIEW)
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
-
-  versions       MediaVersion[]
-  processingJobs MediaProcessingJob[]
-}
-
-model MediaVersion {
-  id                    String           @id @default(cuid())
-  mediaAssetId          String
-  platform              Platform
-  placement             String
-  width                 Int
-  height                Int
-  aspectRatio           String
-  format                String
-  mimeType              String
-  fileSizeBytes         BigInt?
-  storageKey            String?
-  publicUrl             String?
-  processingStatus      ProcessingStatus @default(PENDING)
-  cropMode              String           @default("fit")
-  focalPointJson        Json?
-  safeZoneWarningsJson  Json?
-  qualityScore          Float?
-  qualityScoreLabel     String?
-  qualityScoreReason    String?
-  validationStatus      ValidationStatus @default(NEEDS_REVIEW)
-  validationErrorsJson  Json?
-  validationWarningsJson Json?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-
-  mediaAsset     MediaAsset           @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
-  processingJobs MediaProcessingJob[]
-}
-
-model MediaProcessingJob {
-  id             String    @id @default(cuid())
-  mediaAssetId   String
-  mediaVersionId String?
-  jobType        String
-  status         String    @default("queued")
-  attempts       Int       @default(0)
-  errorMessage   String?
-  queuedAt       DateTime  @default(now())
-  startedAt      DateTime?
-  completedAt    DateTime?
-  updatedAt      DateTime  @updatedAt
-
-  mediaAsset   MediaAsset    @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
-  mediaVersion MediaVersion? @relation(fields: [mediaVersionId], references: [id])
-}
-
-model ScheduledPost {
-  id            String     @id @default(cuid())
-  title         String
-  masterCaption String
-  status        PostStatus @default(DRAFT)
-  scheduledAt   DateTime?
-  publishedAt   DateTime?
-  mediaUrl      String?
-  mediaType     String?
-  createdBy     String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  user        User?                   @relation(fields: [createdBy], references: [id])
-  platforms   ScheduledPostPlatform[]
-  publishLogs PublishLog[]
-}
-
-model ScheduledPostPlatform {
-  id              String             @id @default(cuid())
-  scheduledPostId String
-  accountId       String?
-  platform        Platform
-  status          PlatformPostStatus @default(PENDING)
-  externalPostId  String?
-  platformCaption String?
-  mediaUrl        String?
-  mediaType       String?
-  publishedAt     DateTime?
-  errorMessage    String?
-  retryCount      Int                @default(0)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  scheduledPost ScheduledPost  @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
-  account       SocialAccount? @relation(fields: [accountId], references: [id])
-}
-
-model PublishLog {
-  id              String    @id @default(cuid())
-  scheduledPostId String?
-  postTitle       String
-  platform        Platform
-  action          String
-  status          String
-  externalPostId  String?
-  apiResponse     String?
-  errorMessage    String?
-  timestamp       DateTime  @default(now())
-
-  scheduledPost ScheduledPost? @relation(fields: [scheduledPostId], references: [id])
-}
-
-model SocialComment {
-  id                  String          @id @default(cuid())
-  platform            Platform
-  accountId           String?
-  accountName         String
-  commenterName       String
-  commenterHandle     String?
-  commentText         String
-  originalPostTitle   String?
-  originalPostCaption String?
-  externalCommentId   String?
-  timestamp           DateTime        @default(now())
-  status              CommentStatus   @default(NEW)
-  priority            CommentPriority @default(NORMAL)
-  replyCount          Int             @default(0)
-  assignedUser        String?
-  mediaUrl            String?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-
-  account SocialAccount?       @relation(fields: [accountId], references: [id])
-  replies SocialCommentReply[]
-  notes   SocialInboxNote[]
-}
-
-model SocialCommentReply {
-  id              String    @id @default(cuid())
-  commentId       String
-  replyText       String
-  sentBy          String?
-  sentAt          DateTime  @default(now())
-  status          String    @default("sent")
-  externalReplyId String?
-  errorMessage    String?
-
-  comment SocialComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-}
-
-model SocialInboxNote {
-  id        String   @id @default(cuid())
-  commentId String
-  noteText  String
-  createdBy String?
-  createdAt DateTime @default(now())
-
-  comment SocialComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-}
-
-model SocialInboxSyncLog {
-  id               String    @id @default(cuid())
-  platform         Platform
-  accountId        String?
-  actionType       String
-  status           String
-  relatedPost      String?
-  relatedCommenter String?
-  errorMessage     String?
-  timestamp        DateTime  @default(now())
-
-  account SocialAccount? @relation(fields: [accountId], references: [id])
-}
-
-model Setting {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     Json
-  updatedAt DateTime @updatedAt
-}
-
-model AuditLog {
-  id           String   @id @default(cuid())
-  userId       String?
-  action       String
-  resourceType String
-  resourceId   String?
-  details      Json?
-  ipAddress    String?
-  timestamp    DateTime @default(now())
-
-  user User? @relation(fields: [userId], references: [id])
 }

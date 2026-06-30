@@ -1,0 +1,16 @@
+Good news: for your own Pages, this is mostly doable without App Review. The permissions you need to post to and read your own Facebook Pages (`pages_manage_posts`, `pages_show_list`, `pages_read_engagement`) work under Standard Access as long as you're an admin of those Pages and the app has a role connection to them. Meta App Review is for apps that need access to data that you do not own or manage. You own and manage these Pages, so you fall outside that.
+
+The catch is the word "internally." A multi-account posting dashboard is the kind of tool where each piece needs checking, so here's the realistic breakdown.
+
+What works with Standard Access (no App Review):
+Posting to, reading, and managing Facebook Pages where you have an admin role and the Page is claimed by the same Business that claims your app. That's the core of what you described for Facebook. While in development/standard mode you can publish to your own Page through the app, but those posts are only visible to Page administrators and app developers — wait, that's the older "development mode" behavior. For a Business app using access levels, posts to your own Page via Standard Access are real, public posts, not hidden ones. The "hidden post" limitation applied to the old Dev Mode model, not to your own-Page Standard Access.
+
+Where you may still hit a verification wall:
+Business Verification is required for all apps making requests for Advanced Access. If everything stays at Standard Access for your own assets, you can often avoid even that. But some Page-management permissions have tightened over time, so if a specific permission shows "requires App Review" in your dashboard even for your own Page, that's Meta's call and you'd need to complete Business Verification (the quick identity check, connecting to your verified Business Manager) rather than the full screencast review.
+
+The bigger practical point — Instagram and "all my media accounts":
+If you want this dashboard to also post to Instagram, that runs through the Instagram Graph API and requires Instagram Business/Creator accounts linked to your Pages, plus its own permissions (`instagram_basic`, `instagram_content_publish`). Those generally do require App Review + Business Verification even for your own accounts, because Meta treats Instagram publishing as a reviewable capability. And anything outside Meta (X/Twitter, LinkedIn, TikTok) has entirely separate APIs and approval processes — Facebook's rules don't cover those.
+
+So the honest summary: Facebook Pages alone, your own, posting and reading → Standard Access, likely no review. Add Instagram publishing → expect App Review + Business Verification.
+
+Are you building this dashboard yourself, or using/configuring an existing tool? And is Instagram in scope? That determines whether you can skip review entirely or need to budget for it.
