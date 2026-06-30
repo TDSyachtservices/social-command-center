@@ -109,6 +109,8 @@ model SocialAccount {
   postPlatforms ScheduledPostPlatform[]
   comments      SocialComment[]
   syncLogs      SocialInboxSyncLog[]
+  notifications Notification[]
+  platformStats PlatformStats[]
 }
 
 model MediaAsset {
@@ -313,4 +315,36 @@ model AuditLog {
   timestamp    DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  platform   String
+  accountId  String?
+  externalId String?
+  type       String
+  title      String
+  body       String?
+  payload    Json?
+  isRead     Boolean  @default(false)
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  account SocialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@unique([platform, externalId])
+  @@index([platform, isRead])
+  @@index([createdAt])
+}
+
+model PlatformStats {
+  id             String   @id @default(cuid())
+  platform       String
+  accountId      String
+  followersCount Int
+  polledAt       DateTime @default(now())
+
+  account SocialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, polledAt])
 }
