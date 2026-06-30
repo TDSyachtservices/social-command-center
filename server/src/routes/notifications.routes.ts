@@ -12,8 +12,8 @@ const listQuerySchema = z.object({
   platform: z.string().optional(),
   type: z.string().optional(),
   unreadOnly: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  page: z.string().optional(),
+  limit: z.string().optional(),
 });
 
 router.get(
@@ -23,6 +23,9 @@ router.get(
     const q = (
       req as Request & { validatedQuery: z.infer<typeof listQuerySchema> }
     ).validatedQuery;
+
+    const page = Math.max(1, parseInt(q.page ?? "1", 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(q.limit ?? "50", 10) || 50));
 
     const where = {
       ...(q.platform ? { platform: q.platform.toUpperCase() } : {}),
@@ -35,8 +38,8 @@ router.get(
       prisma.notification.findMany({
         where,
         orderBy: { occurredAt: "desc" },
-        skip: (q.page - 1) * q.limit,
-        take: q.limit,
+        skip: (page - 1) * limit,
+        take: limit,
         select: {
           id: true,
           platform: true,
@@ -52,7 +55,7 @@ router.get(
       }),
     ]);
 
-    sendSuccess(res, notifications, { total, page: q.page, limit: q.limit });
+    sendSuccess(res, notifications, { total, page, limit });
   },
 );
 
