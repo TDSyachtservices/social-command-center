@@ -8,18 +8,20 @@ WORKDIR /app
 # ImageMagick fails with "no decode delegate for this image format" on .jpg.
 RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp imagemagick-tiff
 
-# ─── Install ALL dependencies (dev + prod needed for build) ────────────────
+# ─── Install ALL dependencies (dev + prod, with scripts so Prisma can ──────
+# download its engine binary during postinstall).
 # Railway's rootDirectory is /server, so the Docker build context is the
 # server/ directory itself. All COPY paths are relative to server/ — NO
 # server/ prefix (that would resolve to server/server/... and fail).
 FROM base AS deps
 COPY package*.json ./
-RUN npm install --ignore-scripts
+RUN npm install
 
 # ─── Build — reuses deps layer, no second npm install ─────────────────────
+# `npm run build` already runs `prisma generate && tsc`, so no separate
+# prisma generate step is needed here.
 FROM deps AS builder
 COPY . .
-RUN npx prisma generate
 RUN npm run build
 # Prune dev deps in-place so runner gets a clean prod node_modules
 RUN npm prune --omit=dev
