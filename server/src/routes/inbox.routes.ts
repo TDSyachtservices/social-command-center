@@ -102,65 +102,80 @@ router.post("/sync", async (_req: Request, res: Response) => {
       continue;
     }
 
-    const appPostMap = await prisma.scheduledPostPlatform
-      .findMany({
-        where: {
-          accountId: account.id,
-          platform: account.platform,
-          status: "PUBLISHED",
-          externalPostId: { not: null },
-        },
-        include: { scheduledPost: { select: { title: true } } },
-      })
-      .then((rows) =>
-        Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
-      );
+    // ── Isolate each account so one failure doesn't abort the whole sync ──────
+    try {
+      const appPostMap = await prisma.scheduledPostPlatform
+        .findMany({
+          where: {
+            accountId: account.id,
+            platform: account.platform,
+            status: "PUBLISHED",
+            externalPostId: { not: null },
+          },
+          include: { scheduledPost: { select: { title: true } } },
+        })
+        .then((rows) =>
+          Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
+        );
 
-    const feedPosts =
-      account.platform === "FACEBOOK"
-        ? await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 })
-        : (await getMediaWithComments({ accessToken, igUserId: account.accountId, limit: 50 })).map((m) => ({
-            externalPostId: m.externalPostId,
-            message: m.caption,
-            createdTime: m.createdTime,
-            comments: m.comments,
-          }));
-
-    for (const post of feedPosts) {
-      const defaultTitle =
+      const feedPosts =
         account.platform === "FACEBOOK"
-          ? (post.message.slice(0, 60) || "Facebook post")
-          : (post.message.slice(0, 60) || "Instagram post");
-      const postTitle = appPostMap[post.externalPostId] ?? defaultTitle;
-      for (const c of post.comments) {
-        const existing = await prisma.socialComment.findFirst({
-          where: { externalCommentId: c.externalId },
-        });
-        if (!existing) {
-          await prisma.socialComment.create({
-            data: {
-              platform: account.platform,
-              accountId: account.id,
-              accountName: account.accountName,
-              commenterName: c.commenterName,
-              commentText: c.text,
-              originalPostTitle: postTitle,
-              originalPostCaption: post.message,
-              externalCommentId: c.externalId,
-              timestamp: new Date(c.timestamp),
-            },
-          });
-          totalNew++;
-        }
-        totalSynced++;
-      }
-      results.push({ accountId: account.id, postId: post.externalPostId, synced: post.comments.length });
-    }
+          ? await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 })
+          : (await getMediaWithComments({ accessToken, igUserId: account.accountId, limit: 50 })).map((m) => ({
+              externalPostId: m.externalPostId,
+              message: m.caption,
+              createdTime: m.createdTime,
+              comments: m.comments,
+            }));
 
-    await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
-    await prisma.socialInboxSyncLog.create({
-      data: { platform: account.platform, accountId: account.id, actionType: "comment_sync", status: "success" },
-    });
+      for (const post of feedPosts) {
+        const defaultTitle =
+          account.platform === "FACEBOOK"
+            ? (post.message.slice(0, 60) || "Facebook post")
+            : (post.message.slice(0, 60) || "Instagram post");
+        const postTitle = appPostMap[post.externalPostId] ?? defaultTitle;
+        for (const c of post.comments) {
+          const existing = await prisma.socialComment.findFirst({
+            where: { externalCommentId: c.externalId },
+          });
+          if (!existing) {
+            await prisma.socialComment.create({
+              data: {
+                platform: account.platform,
+                accountId: account.id,
+                accountName: account.accountName,
+                commenterName: c.commenterName,
+                commentText: c.text,
+                originalPostTitle: postTitle,
+                originalPostCaption: post.message,
+                externalCommentId: c.externalId,
+                timestamp: new Date(c.timestamp),
+              },
+            });
+            totalNew++;
+          }
+          totalSynced++;
+        }
+        results.push({ accountId: account.id, postId: post.externalPostId, synced: post.comments.length });
+      }
+
+      await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
+      await prisma.socialInboxSyncLog.create({
+        data: { platform: account.platform, accountId: account.id, actionType: "comment_sync", status: "success" },
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error({ accountId: account.id, platform: account.platform, err }, "Account sync failed");
+      await prisma.socialInboxSyncLog.create({
+        data: {
+          platform: account.platform,
+          accountId: account.id,
+          actionType: "comment_sync",
+          status: "error",
+          errorMessage,
+        },
+      }).catch(() => { /* ignore log write failures */ });
+    }
   }
 
   sendSuccess(res, { accounts: accounts.length, totalSynced, totalNew, results });
