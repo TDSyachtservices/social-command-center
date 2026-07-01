@@ -31,6 +31,7 @@ export function SocialPreviewPanel({ platforms, masterCaption, platformCaptions,
               platform={platform}
               caption={platformCaptions[platform] || masterCaption}
               mediaUrl={platformMedia?.[platform]?.url ?? mediaUrl}
+              mediaType={platformMedia?.[platform]?.type ?? undefined}
               date={date}
               accountName={accountNames?.[platform]}
             />

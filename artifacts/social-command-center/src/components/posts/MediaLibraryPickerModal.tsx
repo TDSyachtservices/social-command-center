@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Library, Film, Image as ImageIcon, CheckCircle2, ChevronLeft, ExternalLink } from "lucide-react";
+import { Library, Film, Image as ImageIcon, CheckCircle2, ChevronLeft, ExternalLink, Play } from "lucide-react";
 import { Link } from "wouter";
 import { listMedia, getMediaAsset, type ApiMediaAsset, type ApiMediaVersion } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
@@ -89,7 +89,7 @@ function VersionCard({
         >
           {imageUrl ? (
             isVideo ? (
-              <video src={imageUrl} className="w-full h-full object-cover" muted playsInline />
+              <video src={imageUrl} className="w-full h-full object-cover" controls muted playsInline />
             ) : (
               <img src={imageUrl} alt={label} className="w-full h-full object-cover" />
             )
@@ -320,6 +320,18 @@ export function MediaLibraryPickerModal({ open, onOpenChange, onSelect }: MediaL
                               ? <Film className="h-5 w-5 text-muted-foreground opacity-50" />
                               : <ImageIcon className="h-5 w-5 text-muted-foreground opacity-50" />
                             }
+                          </div>
+                        )}
+                        {/* Video play badge */}
+                        {asset.originalFileType === "video" && (
+                          <div className="absolute bottom-1 left-1 bg-black/70 rounded-full p-0.5">
+                            <Play className="w-2.5 h-2.5 text-white" />
+                          </div>
+                        )}
+                        {/* GIF badge */}
+                        {asset.originalFileName.toLowerCase().endsWith(".gif") && (
+                          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] px-1 rounded font-bold">
+                            GIF
                           </div>
                         )}
                         {isSelected && (

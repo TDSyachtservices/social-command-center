@@ -5,6 +5,7 @@ interface SocialPreviewCardProps {
   platform: Platform;
   caption: string;
   mediaUrl: string | null;
+  mediaType?: "image" | "video";
   date?: string;
   accountName?: string;
   optimizedVersion?: { width: number; height: number; qualityScore: string; cropMode: string };
@@ -18,6 +19,13 @@ function MediaPlaceholder({ className }: { className?: string }) {
   );
 }
 
+function MediaEl({ url, mediaType, className }: { url: string; mediaType?: "image" | "video"; className?: string }) {
+  if (mediaType === "video") {
+    return <video src={url} className={className} controls muted autoPlay playsInline loop />;
+  }
+  return <img src={url} alt="" className={className} />;
+}
+
 function Avatar({ name, size = "md", color = "bg-blue-600" }: { name?: string; size?: "sm" | "md"; color?: string }) {
   const initials = name ? name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : "?";
   const sz = size === "sm" ? "w-6 h-6 text-[9px]" : "w-8 h-8 text-xs";
@@ -29,7 +37,7 @@ function Avatar({ name, size = "md", color = "bg-blue-600" }: { name?: string; s
 }
 
 // ── Facebook ────────────────────────────────────────────────────────────────
-function FacebookPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
+function FacebookPreview({ caption, mediaUrl, mediaType, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
   return (
     <div className="rounded-lg border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden font-sans text-[13px]">
       <div className="p-3 flex items-start justify-between gap-2">
@@ -49,7 +57,7 @@ function FacebookPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPr
 
       {mediaUrl && (
         <div className="w-full overflow-hidden bg-black">
-          <img src={mediaUrl} alt="" className="w-full h-auto block" />
+          <MediaEl url={mediaUrl} mediaType={mediaType} className="w-full h-auto block" />
         </div>
       )}
 
@@ -69,7 +77,7 @@ function FacebookPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPr
 }
 
 // ── Instagram ───────────────────────────────────────────────────────────────
-function InstagramPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
+function InstagramPreview({ caption, mediaUrl, mediaType, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
   const handle = accountName ? accountName.toLowerCase().replace(/\s+/g, "_") : "your_account";
   return (
     <div className="rounded-lg border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden font-sans text-[13px]">
@@ -90,7 +98,7 @@ function InstagramPreview({ caption, mediaUrl, date, accountName }: Omit<SocialP
 
       {mediaUrl ? (
         <div className="aspect-square w-full overflow-hidden">
-          <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
+          <MediaEl url={mediaUrl} mediaType={mediaType} className="w-full h-full object-cover" />
         </div>
       ) : (
         <MediaPlaceholder className="aspect-square" />
@@ -122,7 +130,7 @@ function InstagramPreview({ caption, mediaUrl, date, accountName }: Omit<SocialP
 }
 
 // ── LinkedIn ─────────────────────────────────────────────────────────────────
-function LinkedInPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
+function LinkedInPreview({ caption, mediaUrl, mediaType, date, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion">) {
   return (
     <div className="rounded-lg border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden font-sans text-[13px]">
       <div className="p-3 flex items-start gap-2">
@@ -142,7 +150,7 @@ function LinkedInPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPr
 
       {mediaUrl ? (
         <div className="aspect-[1.91/1] w-full overflow-hidden">
-          <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
+          <MediaEl url={mediaUrl} mediaType={mediaType} className="w-full h-full object-cover" />
         </div>
       ) : (
         <MediaPlaceholder className="aspect-[1.91/1]" />
@@ -169,20 +177,24 @@ function LinkedInPreview({ caption, mediaUrl, date, accountName }: Omit<SocialPr
 }
 
 // ── TikTok ───────────────────────────────────────────────────────────────────
-function TikTokPreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
+function TikTokPreview({ caption, mediaUrl, mediaType, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
   const handle = accountName ? "@" + accountName.toLowerCase().replace(/\s+/g, "") : "@your_account";
   return (
     <div className="rounded-lg overflow-hidden bg-black shadow-sm relative font-sans" style={{ aspectRatio: "9/16", maxHeight: 480 }}>
       {mediaUrl ? (
-        <img src={mediaUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        mediaType === "video" ? (
+          <video src={mediaUrl} className="absolute inset-0 w-full h-full object-cover" autoPlay muted loop playsInline controls />
+        ) : (
+          <img src={mediaUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        )
       ) : (
         <div className="absolute inset-0 flex items-center justify-center text-white/30">
           <ImageIcon className="h-12 w-12" />
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-      <div className="absolute bottom-0 left-0 right-10 p-3 space-y-1">
+      <div className="absolute bottom-0 left-0 right-10 p-3 space-y-1 pointer-events-none">
         <div className="text-white font-semibold text-[12px]">{handle}</div>
         {caption && (
           <div className="text-white/90 text-[11px] leading-snug line-clamp-2 whitespace-pre-wrap">{caption}</div>
@@ -193,7 +205,7 @@ function TikTokPreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCar
         </div>
       </div>
 
-      <div className="absolute right-2 bottom-12 flex flex-col items-center gap-4">
+      <div className="absolute right-2 bottom-12 flex flex-col items-center gap-4 pointer-events-none">
         <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-red-500 border-2 border-white flex items-center justify-center">
           <span className="text-white text-[8px] font-bold">+</span>
         </div>
@@ -214,7 +226,7 @@ function TikTokPreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCar
 }
 
 // ── Website OG ───────────────────────────────────────────────────────────────
-function WebsitePreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
+function WebsitePreview({ caption, mediaUrl, mediaType, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
   const domain = accountName ? accountName.toLowerCase().replace(/\s+/g, "") + ".com" : "yourwebsite.com";
   const title = caption ? caption.split("\n")[0].slice(0, 60) : "Your post title";
   const description = caption && caption.includes("\n") ? caption.split("\n").slice(1).join(" ").slice(0, 120) : caption?.slice(0, 120) || "";
@@ -222,7 +234,7 @@ function WebsitePreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCa
     <div className="rounded-lg border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden font-sans text-[13px]">
       {mediaUrl ? (
         <div className="aspect-[1.91/1] w-full overflow-hidden">
-          <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
+          <MediaEl url={mediaUrl} mediaType={mediaType} className="w-full h-full object-cover" />
         </div>
       ) : (
         <MediaPlaceholder className="aspect-[1.91/1]" />
@@ -237,15 +249,15 @@ function WebsitePreview({ caption, mediaUrl, accountName }: Omit<SocialPreviewCa
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function SocialPreviewCard({ platform, caption, mediaUrl, date, accountName, optimizedVersion }: SocialPreviewCardProps) {
-  const props = { caption, mediaUrl, date, accountName, optimizedVersion };
+export function SocialPreviewCard({ platform, caption, mediaUrl, mediaType, date, accountName, optimizedVersion }: SocialPreviewCardProps) {
+  const props = { caption, mediaUrl, mediaType, date, accountName, optimizedVersion };
 
   const preview = (() => {
     switch (platform) {
       case "Facebook":  return <FacebookPreview  {...props} />;
       case "Instagram": return <InstagramPreview {...props} />;
       case "LinkedIn":  return <LinkedInPreview  {...props} />;
-      default:          return <FacebookPreview   {...props} />;
+      default:          return <FacebookPreview  {...props} />;
     }
   })();
 

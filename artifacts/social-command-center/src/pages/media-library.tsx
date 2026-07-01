@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Image as ImageIcon, Film, UploadCloud } from "lucide-react";
+import { Image as ImageIcon, Film, UploadCloud, Play, X } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   listMedia,
   uploadMediaIntent,
@@ -113,7 +114,10 @@ export default function MediaLibrary() {
   const [, setLocation] = useLocation();
   const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? []);
   const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const isGif = (asset: DisplayAsset) => asset.originalFileName.toLowerCase().endsWith(".gif");
 
   useEffect(() => {
     const persisted = loadPersisted();
@@ -271,13 +275,14 @@ export default function MediaLibrary() {
   };
 
   const filters = [
-    "All", "Images", "Videos", "Needs Review", "Failed",
+    "All", "Images", "GIFs", "Videos", "Needs Review", "Failed",
     "Ready for Facebook", "Ready for Instagram", "Ready for LinkedIn", "Ready for TikTok", "Ready for Website"
   ];
 
   const filteredAssets = assets.filter(asset => {
     if (filter === "All") return true;
-    if (filter === "Images") return asset.originalFileType === "image";
+    if (filter === "Images") return asset.originalFileType === "image" && !isGif(asset);
+    if (filter === "GIFs") return isGif(asset);
     if (filter === "Videos") return asset.originalFileType === "video";
     if (filter === "Needs Review") return asset.generatedVersions.some(v => v.qualityScore === "Needs Review");
     if (filter === "Failed") return asset.processingStatus === "failed";
@@ -317,7 +322,7 @@ export default function MediaLibrary() {
               <>
                 <UploadCloud className="h-8 w-8" />
                 <div className="font-medium">Drag & drop or click to upload</div>
-                <div className="text-xs">Images or Videos</div>
+                <div className="text-xs">Images (JPG, PNG, GIF) or Videos (MP4, MOV)</div>
               </>
             )}
           </div>
@@ -356,7 +361,7 @@ export default function MediaLibrary() {
 
           return (
             <div key={asset.id} className="border rounded-lg overflow-hidden bg-card text-card-foreground flex flex-col shadow-sm" data-testid={`card-asset-${asset.id}`}>
-              <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+              <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden group/thumb">
                 {asset.previewUrl ? (
                   asset.originalFileType === "video" ? (
                     <video src={asset.previewUrl} className="w-full h-full object-cover" muted playsInline />
@@ -368,9 +373,24 @@ export default function MediaLibrary() {
                 ) : (
                   <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
                 )}
+
+                {/* Type badge */}
                 <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                  {asset.originalFileType.toUpperCase()}
+                  {asset.originalFileType === "video" ? "VIDEO" : isGif(asset) ? "GIF" : "IMAGE"}
                 </div>
+
+                {/* Play button overlay for videos */}
+                {asset.originalFileType === "video" && asset.previewUrl && (
+                  <button
+                    onClick={() => setLightboxUrl(asset.previewUrl!)}
+                    className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover/thumb:bg-black/30 transition-colors"
+                    title="Play video"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-lg">
+                      <Play className="w-5 h-5 text-black ml-0.5" />
+                    </div>
+                  </button>
+                )}
               </div>
               <div className="p-4 space-y-3 flex-1 flex flex-col">
                 <div>
@@ -419,6 +439,20 @@ export default function MediaLibrary() {
           );
         })}
       </div>
+
+      {/* Video lightbox */}
+      <Dialog open={lightboxUrl !== null} onOpenChange={(open) => !open && setLightboxUrl(null)}>
+        <DialogContent className="max-w-4xl p-2 bg-black border-0">
+          {lightboxUrl && (
+            <video
+              src={lightboxUrl}
+              className="w-full max-h-[80vh] rounded"
+              controls
+              autoPlay
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent data-testid="dialog-delete-confirm">

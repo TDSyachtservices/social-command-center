@@ -196,7 +196,7 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
               type="file"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               onChange={handleFileChange}
-              accept="image/*,video/*"
+              accept="image/*,video/*,.gif"
               disabled={isUploading}
             />
             <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
@@ -206,7 +206,7 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
                 <>
                   <UploadCloud className="h-8 w-8" />
                   <div className="text-sm font-medium">Drag & drop or click to upload</div>
-                  <div className="text-xs">Images (JPG, PNG) or Videos (MP4)</div>
+                  <div className="text-xs">Images (JPG, PNG, GIF) or Videos (MP4, MOV)</div>
                 </>
               )}
             </div>
@@ -228,7 +228,13 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
           <div className="relative border rounded-lg overflow-hidden group bg-muted flex items-center justify-center aspect-video">
             <ImageIcon className="h-12 w-12 text-muted-foreground opacity-50 absolute" />
             {previewType === "video" ? (
-              <video src={preview} className="w-full h-full object-cover relative z-10" muted playsInline />
+              <video
+                src={preview}
+                className="w-full h-full object-cover relative z-10"
+                controls
+                muted
+                playsInline
+              />
             ) : (
               <img src={preview} alt="Preview" className="w-full h-full object-cover relative z-10" />
             )}
