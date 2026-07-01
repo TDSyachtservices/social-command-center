@@ -21,6 +21,7 @@ import authRouter from "./routes/auth.routes.js";
 import insightsRouter from "./routes/insights.routes.js";
 import webhookRouter from "./routes/webhook.routes.js";
 import notificationsRouter from "./routes/notifications.routes.js";
+import musicRouter from "./routes/music.routes.js";
 
 const app = express();
 
@@ -105,6 +106,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/music", musicRouter);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

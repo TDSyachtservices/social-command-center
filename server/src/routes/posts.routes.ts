@@ -37,6 +37,9 @@ const createPostSchema = z.object({
   scheduledAt: z.string().datetime().optional().nullable(),
   mediaUrl: z.string().url().optional().nullable(),
   mediaType: z.enum(["image", "video"]).optional().nullable(),
+  postType: z.enum(["standard", "album", "story", "reel", "event"]).default("standard"),
+  additionalMediaUrls: z.array(z.string().url()).default([]),
+  postMetadataJson: z.record(z.unknown()).optional().nullable(),
   platforms: z.array(platformEnum).min(1),
   accountIds: z.array(z.string()).default([]),
   platformMedia: z.array(platformMediaSchema).optional(),
@@ -149,6 +152,9 @@ router.post(
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
         mediaUrl: postMediaUrl,
         mediaType: postMediaType,
+        postType: body.postType ?? "standard",
+        additionalMediaUrls: body.additionalMediaUrls ?? [],
+        postMetadataJson: body.postMetadataJson ?? null,
         platforms: { create: platformRows },
       },
       include: { platforms: true },
@@ -192,6 +198,9 @@ router.patch(
             : fallbackPm
               ? { mediaType: fallbackPm.mediaType ?? null }
               : {}),
+          ...(body.postType !== undefined ? { postType: body.postType } : {}),
+          ...(body.additionalMediaUrls !== undefined ? { additionalMediaUrls: body.additionalMediaUrls } : {}),
+          ...(body.postMetadataJson !== undefined ? { postMetadataJson: body.postMetadataJson ?? null } : {}),
         },
       });
 

@@ -49,6 +49,9 @@ export interface ApiPost {
   publishedAt: string | null;
   mediaUrl: string | null;
   mediaType: string | null;
+  postType: string;
+  additionalMediaUrls: string[];
+  postMetadataJson: Record<string, unknown> | null;
   platforms: Array<{ platform: string; status: string; accountId: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
   createdAt: string;
   updatedAt: string;
@@ -84,8 +87,11 @@ export async function createPost(body: {
   accountIds: string[];
   status?: string;
   scheduledAt?: string;
-  mediaUrl?: string;
-  mediaType?: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  postType?: string;
+  additionalMediaUrls?: string[];
+  postMetadataJson?: Record<string, unknown> | null;
   platformMedia?: Array<{ platform: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
 }): Promise<ApiPost | null> {
   const result = await apiFetch<ApiPost>("/api/posts", {

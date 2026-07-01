@@ -183,17 +183,20 @@ model MediaProcessingJob {
 }
 
 model ScheduledPost {
-  id            String     @id @default(cuid())
-  title         String
-  masterCaption String
-  status        PostStatus @default(DRAFT)
-  scheduledAt   DateTime?
-  publishedAt   DateTime?
-  mediaUrl      String?
-  mediaType     String?
-  createdBy     String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                   String     @id @default(cuid())
+  title                String
+  masterCaption        String
+  status               PostStatus @default(DRAFT)
+  scheduledAt          DateTime?
+  publishedAt          DateTime?
+  mediaUrl             String?
+  mediaType            String?
+  postType             String     @default("standard")
+  additionalMediaUrls  String[]
+  postMetadataJson     Json?
+  createdBy            String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   user        User?                   @relation(fields: [createdBy], references: [id])
   platforms   ScheduledPostPlatform[]
@@ -201,20 +204,21 @@ model ScheduledPost {
 }
 
 model ScheduledPostPlatform {
-  id              String             @id @default(cuid())
-  scheduledPostId String
-  accountId       String?
-  platform        Platform
-  status          PlatformPostStatus @default(PENDING)
-  externalPostId  String?
-  platformCaption String?
-  mediaUrl        String?
-  mediaType       String?
-  publishedAt     DateTime?
-  errorMessage    String?
-  retryCount      Int                @default(0)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  scheduledPostId     String
+  accountId           String?
+  platform            Platform
+  status              PlatformPostStatus @default(PENDING)
+  externalPostId      String?
+  platformCaption     String?
+  mediaUrl            String?
+  mediaType           String?
+  additionalMediaUrls String[]
+  publishedAt         DateTime?
+  errorMessage        String?
+  retryCount          Int                @default(0)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   scheduledPost ScheduledPost  @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
   account       SocialAccount? @relation(fields: [accountId], references: [id])

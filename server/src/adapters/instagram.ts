@@ -10,16 +10,14 @@ export function getCapabilities(): PlatformCapabilities {
 }
 
 /**
- * Publish a post to Instagram via the Graph API content-publishing flow.
+ * Publish a single photo or video (Reel) to Instagram.
  *
- * Instagram publishing is a two-step, MEDIA-REQUIRED process:
- *   1. Create a media container on /{ig-user-id}/media (image_url or video_url + caption).
- *   2. Publish that container on /{ig-user-id}/media_publish (creation_id).
+ * Instagram publishing is a two-step process:
+ *   1. Create a media container on /{ig-user-id}/media.
+ *   2. Publish via /{ig-user-id}/media_publish.
  *
- * Unlike Facebook, Instagram CANNOT publish a text-only post — an image or
- * video is mandatory, and the media URL must be publicly reachable because
- * Instagram fetches it server-side. The access token is the Page token linked
- * to the IG Business account, and the node is the IG user id (account.accountId).
+ * Text-only posts are not supported — media is mandatory.
+ * For a video, media_type is set to REELS (standard IG video format).
  */
 export async function publishPost(opts: {
   accessToken: string;
@@ -38,7 +36,6 @@ export async function publishPost(opts: {
 
   const isVideo = opts.mediaType === "video";
 
-  // ── Step 1: create the media container ────────────────────────────────────
   const createBody: Record<string, string> = {
     caption: opts.caption,
     access_token: opts.accessToken,
@@ -70,15 +67,11 @@ export async function publishPost(opts: {
   }
 
   const creationId = createData.id;
-
-  // ── Step 2: wait for the container to finish processing ───────────────────
-  // Images are usually ready immediately; videos (Reels) need transcoding.
   const ready = await waitForContainer(creationId, opts.accessToken, isVideo);
   if (!ready.ok) {
     return { success: false, errorMessage: ready.errorMessage, rawResponse: ready.raw };
   }
 
-  // ── Step 3: publish the container ─────────────────────────────────────────
   logger.info({ igUserId: opts.igUserId, creationId }, "Publishing Instagram media container");
 
   const publishRes = await fetch(`${GRAPH}/${opts.igUserId}/media_publish`, {
@@ -103,8 +96,231 @@ export async function publishPost(opts: {
 }
 
 /**
- * Poll a media container until it has finished processing. Images finish almost
- * instantly; Reels/videos can take several seconds to transcode.
+ * Instagram Carousel: multiple images (or videos) swiped as one post.
+ * Steps:
+ *   1. Create a container for each item with is_carousel_item=true.
+ *   2. Create a parent CAROUSEL container referencing all child IDs.
+ *   3. Publish the carousel container.
+ */
+export async function publishCarousel(opts: {
+  accessToken: string;
+  igUserId: string;
+  caption: string;
+  mediaItems: Array<{ url: string; type: "image" | "video" }>;
+}): Promise<PublishResult> {
+  if (opts.mediaItems.length < 2) {
+    return { success: false, errorMessage: "Carousel requires at least 2 media items." };
+  }
+  if (opts.mediaItems.length > 10) {
+    return { success: false, errorMessage: "Instagram carousel supports a maximum of 10 items." };
+  }
+
+  logger.info({ igUserId: opts.igUserId, count: opts.mediaItems.length }, "Creating Instagram carousel item containers");
+
+  // Step 1: create a container for each item
+  const childIds: string[] = [];
+  for (const item of opts.mediaItems) {
+    const body: Record<string, string> = {
+      is_carousel_item: "true",
+      access_token: opts.accessToken,
+    };
+    if (item.type === "video") {
+      body.media_type = "VIDEO";
+      body.video_url = item.url;
+    } else {
+      body.image_url = item.url;
+    }
+
+    const res = await fetch(`${GRAPH}/${opts.igUserId}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = (await res.json()) as { id?: string; error?: { message: string } };
+    if (!res.ok || data.error || !data.id) {
+      const msg = data.error?.message ?? `HTTP ${res.status}`;
+      logger.error({ igUserId: opts.igUserId, url: item.url, error: data.error }, "Carousel item container failed");
+      return { success: false, errorMessage: `Carousel item upload failed: ${msg}`, rawResponse: data };
+    }
+
+    const ready = await waitForContainer(data.id, opts.accessToken, item.type === "video");
+    if (!ready.ok) {
+      return { success: false, errorMessage: `Carousel item processing failed: ${ready.errorMessage}` };
+    }
+
+    childIds.push(data.id);
+  }
+
+  // Step 2: create parent carousel container
+  const carouselRes = await fetch(`${GRAPH}/${opts.igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      caption: opts.caption,
+      access_token: opts.accessToken,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const carouselData = (await carouselRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!carouselRes.ok || carouselData.error || !carouselData.id) {
+    const msg = carouselData.error?.message ?? `HTTP ${carouselRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: carouselData.error }, "Instagram carousel parent container failed");
+    return { success: false, errorMessage: msg, rawResponse: carouselData };
+  }
+
+  const carouselId = carouselData.id;
+  const carouselReady = await waitForContainer(carouselId, opts.accessToken, false);
+  if (!carouselReady.ok) {
+    return { success: false, errorMessage: `Carousel container not ready: ${carouselReady.errorMessage}` };
+  }
+
+  // Step 3: publish
+  const publishRes = await fetch(`${GRAPH}/${opts.igUserId}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ creation_id: carouselId, access_token: opts.accessToken }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const publishData = (await publishRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!publishRes.ok || publishData.error || !publishData.id) {
+    const msg = publishData.error?.message ?? `HTTP ${publishRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: publishData.error }, "Instagram carousel publish failed");
+    return { success: false, errorMessage: msg, rawResponse: publishData };
+  }
+
+  logger.info({ igUserId: opts.igUserId, externalPostId: publishData.id, items: childIds.length }, "Instagram carousel published");
+  return { success: true, externalPostId: publishData.id, rawResponse: publishData };
+}
+
+/**
+ * Instagram Story: ephemeral 24h content.
+ * Use media_type=STORIES for images; for videos use REELS with a short clip.
+ */
+export async function publishStory(opts: {
+  accessToken: string;
+  igUserId: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
+}): Promise<PublishResult> {
+  logger.info({ igUserId: opts.igUserId, mediaType: opts.mediaType }, "Creating Instagram Story container");
+
+  const createBody: Record<string, string> = {
+    media_type: "STORIES",
+    access_token: opts.accessToken,
+  };
+  if (opts.mediaType === "video") {
+    createBody.video_url = opts.mediaUrl;
+  } else {
+    createBody.image_url = opts.mediaUrl;
+  }
+
+  const createRes = await fetch(`${GRAPH}/${opts.igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(createBody),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const createData = (await createRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!createRes.ok || createData.error || !createData.id) {
+    const msg = createData.error?.message ?? `HTTP ${createRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: createData.error }, "Instagram Story container failed");
+    return { success: false, errorMessage: msg, rawResponse: createData };
+  }
+
+  const creationId = createData.id;
+  const ready = await waitForContainer(creationId, opts.accessToken, opts.mediaType === "video");
+  if (!ready.ok) {
+    return { success: false, errorMessage: ready.errorMessage, rawResponse: ready.raw };
+  }
+
+  const publishRes = await fetch(`${GRAPH}/${opts.igUserId}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ creation_id: creationId, access_token: opts.accessToken }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const publishData = (await publishRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!publishRes.ok || publishData.error || !publishData.id) {
+    const msg = publishData.error?.message ?? `HTTP ${publishRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: publishData.error }, "Instagram Story publish failed");
+    return { success: false, errorMessage: msg, rawResponse: publishData };
+  }
+
+  logger.info({ igUserId: opts.igUserId, externalPostId: publishData.id }, "Instagram Story published");
+  return { success: true, externalPostId: publishData.id, rawResponse: publishData };
+}
+
+/**
+ * Instagram Reel with optional music credit.
+ * The video must already have the desired audio baked in — the Graph API
+ * does not accept external audio URLs or IG music library tracks directly.
+ * The musicCredit string is appended to the caption as a credit line.
+ */
+export async function publishReel(opts: {
+  accessToken: string;
+  igUserId: string;
+  videoUrl: string;
+  caption: string;
+  musicCredit?: string | null;
+}): Promise<PublishResult> {
+  const caption = opts.musicCredit
+    ? `${opts.caption}\n\n🎵 ${opts.musicCredit}`
+    : opts.caption;
+
+  logger.info({ igUserId: opts.igUserId }, "Creating Instagram Reel container");
+
+  const createRes = await fetch(`${GRAPH}/${opts.igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "REELS",
+      video_url: opts.videoUrl,
+      caption,
+      access_token: opts.accessToken,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const createData = (await createRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!createRes.ok || createData.error || !createData.id) {
+    const msg = createData.error?.message ?? `HTTP ${createRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: createData.error }, "Instagram Reel container failed");
+    return { success: false, errorMessage: msg, rawResponse: createData };
+  }
+
+  const creationId = createData.id;
+  const ready = await waitForContainer(creationId, opts.accessToken, true);
+  if (!ready.ok) {
+    return { success: false, errorMessage: ready.errorMessage, rawResponse: ready.raw };
+  }
+
+  const publishRes = await fetch(`${GRAPH}/${opts.igUserId}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ creation_id: creationId, access_token: opts.accessToken }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const publishData = (await publishRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!publishRes.ok || publishData.error || !publishData.id) {
+    const msg = publishData.error?.message ?? `HTTP ${publishRes.status}`;
+    logger.error({ igUserId: opts.igUserId, error: publishData.error }, "Instagram Reel publish failed");
+    return { success: false, errorMessage: msg, rawResponse: publishData };
+  }
+
+  logger.info({ igUserId: opts.igUserId, externalPostId: publishData.id }, "Instagram Reel published");
+  return { success: true, externalPostId: publishData.id, rawResponse: publishData };
+}
+
+/**
+ * Poll a media container until it has finished processing.
  */
 async function waitForContainer(
   creationId: string,
@@ -138,7 +354,6 @@ async function waitForContainer(
       };
     }
 
-    // IN_PROGRESS — wait and retry.
     await new Promise((r) => setTimeout(r, delayMs));
   }
 
@@ -160,7 +375,6 @@ export interface IgMediaWithComments extends IgMedia {
   comments: PlatformComment[];
 }
 
-/** Fetch the IG Business account's media, with top-level comments embedded per item. */
 export async function getMediaWithComments(opts: {
   accessToken: string;
   igUserId: string;
@@ -230,7 +444,6 @@ export async function replyToComment(opts: {
   commentId: string;
   message: string;
 }): Promise<PublishResult> {
-  // Instagram replies are posted to /{ig-comment-id}/replies, not /{comment}/comments like Facebook.
   const res = await fetch(`${GRAPH}/${opts.commentId}/replies`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

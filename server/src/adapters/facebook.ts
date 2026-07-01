@@ -138,6 +138,7 @@ export async function getInstagramAccountForPage(
 
 // ─── Publishing ────────────────────────────────────────────────────────────────
 
+/** Standard post: text-only, single photo, single video, or link. */
 export async function publishPost(opts: {
   accessToken: string;
   pageId: string;
@@ -177,6 +178,279 @@ export async function publishPost(opts: {
   }
 
   logger.info({ pageId: opts.pageId, externalPostId: data.id }, "Facebook publish success");
+  return { success: true, externalPostId: data.id, rawResponse: data };
+}
+
+/**
+ * Photo Album: upload each image as unpublished, then create a feed post
+ * attaching all photos as a multi-image album.
+ * Requires pages_manage_posts permission.
+ */
+export async function publishAlbum(opts: {
+  accessToken: string;
+  pageId: string;
+  message: string;
+  mediaUrls: string[];
+}): Promise<PublishResult> {
+  if (opts.mediaUrls.length < 2) {
+    return { success: false, errorMessage: "Album requires at least 2 images." };
+  }
+
+  logger.info({ pageId: opts.pageId, count: opts.mediaUrls.length }, "Uploading album photos to Facebook");
+
+  // Step 1: upload each photo as unpublished to get photo IDs
+  const photoIds: string[] = [];
+  for (const url of opts.mediaUrls) {
+    const res = await fetch(`${GRAPH}/${opts.pageId}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, published: false, access_token: opts.accessToken }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = (await res.json()) as { id?: string; error?: { message: string } };
+    if (!res.ok || data.error || !data.id) {
+      const msg = data.error?.message ?? `HTTP ${res.status}`;
+      logger.error({ pageId: opts.pageId, url, error: data.error }, "Facebook album photo upload failed");
+      return { success: false, errorMessage: `Photo upload failed: ${msg}`, rawResponse: data };
+    }
+    photoIds.push(data.id);
+  }
+
+  // Step 2: create feed post attaching all photos
+  const attachedMedia = photoIds.map((id) => ({ media_fbid: id }));
+  const feedRes = await fetch(`${GRAPH}/${opts.pageId}/feed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: opts.message,
+      attached_media: attachedMedia,
+      access_token: opts.accessToken,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const feedData = (await feedRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!feedRes.ok || feedData.error || !feedData.id) {
+    const msg = feedData.error?.message ?? `HTTP ${feedRes.status}`;
+    logger.error({ pageId: opts.pageId, error: feedData.error }, "Facebook album feed post failed");
+    return { success: false, errorMessage: msg, rawResponse: feedData };
+  }
+
+  logger.info({ pageId: opts.pageId, externalPostId: feedData.id, photos: photoIds.length }, "Facebook album published");
+  return { success: true, externalPostId: feedData.id, rawResponse: feedData };
+}
+
+/**
+ * Facebook Story: publish a photo or short video (≤ 20s) as a Page story.
+ * Requires pages_manage_posts + pages_read_engagement.
+ */
+export async function publishStory(opts: {
+  accessToken: string;
+  pageId: string;
+  mediaUrl: string;
+  mediaType: "image" | "video";
+}): Promise<PublishResult> {
+  logger.info({ pageId: opts.pageId, mediaType: opts.mediaType }, "Publishing Facebook Story");
+
+  // Step 1: upload the media to get a photo/video ID
+  let mediaId: string;
+  if (opts.mediaType === "video") {
+    const uploadRes = await fetch(`${GRAPH}/${opts.pageId}/videos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_url: opts.mediaUrl,
+        published: false,
+        access_token: opts.accessToken,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const uploadData = (await uploadRes.json()) as { id?: string; error?: { message: string } };
+    if (!uploadRes.ok || uploadData.error || !uploadData.id) {
+      const msg = uploadData.error?.message ?? `HTTP ${uploadRes.status}`;
+      return { success: false, errorMessage: `Story video upload failed: ${msg}`, rawResponse: uploadData };
+    }
+    mediaId = uploadData.id;
+  } else {
+    const uploadRes = await fetch(`${GRAPH}/${opts.pageId}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: opts.mediaUrl,
+        published: false,
+        access_token: opts.accessToken,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const uploadData = (await uploadRes.json()) as { id?: string; error?: { message: string } };
+    if (!uploadRes.ok || uploadData.error || !uploadData.id) {
+      const msg = uploadData.error?.message ?? `HTTP ${uploadRes.status}`;
+      return { success: false, errorMessage: `Story photo upload failed: ${msg}`, rawResponse: uploadData };
+    }
+    mediaId = uploadData.id;
+  }
+
+  // Step 2: create the story
+  const storyBody: Record<string, unknown> = { access_token: opts.accessToken };
+  if (opts.mediaType === "video") {
+    storyBody.video_id = mediaId;
+  } else {
+    storyBody.photo_ids = [mediaId];
+  }
+
+  const storyRes = await fetch(`${GRAPH}/${opts.pageId}/stories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(storyBody),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const storyData = (await storyRes.json()) as { id?: string; error?: { message: string } };
+
+  if (!storyRes.ok || storyData.error || !storyData.id) {
+    const msg = storyData.error?.message ?? `HTTP ${storyRes.status}`;
+    logger.error({ pageId: opts.pageId, error: storyData.error }, "Facebook Story publish failed");
+    return { success: false, errorMessage: msg, rawResponse: storyData };
+  }
+
+  logger.info({ pageId: opts.pageId, externalPostId: storyData.id }, "Facebook Story published");
+  return { success: true, externalPostId: storyData.id, rawResponse: storyData };
+}
+
+/**
+ * Facebook Reel: initialize upload → post via video_reels endpoint.
+ * The video URL must be publicly accessible for server-side fetch.
+ * Requires pages_manage_posts + pages_read_engagement.
+ */
+export async function publishReel(opts: {
+  accessToken: string;
+  pageId: string;
+  videoUrl: string;
+  description: string;
+}): Promise<PublishResult> {
+  logger.info({ pageId: opts.pageId }, "Publishing Facebook Reel");
+
+  // Step 1: initialize the Reels upload session
+  const initRes = await fetch(`${GRAPH}/${opts.pageId}/video_reels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      upload_phase: "start",
+      access_token: opts.accessToken,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const initData = (await initRes.json()) as {
+    video_id?: string;
+    upload_url?: string;
+    error?: { message: string };
+  };
+
+  if (!initRes.ok || initData.error || !initData.video_id || !initData.upload_url) {
+    const msg = initData.error?.message ?? `HTTP ${initRes.status}`;
+    logger.error({ pageId: opts.pageId, error: initData.error }, "Facebook Reel init failed");
+    return { success: false, errorMessage: `Reel upload init failed: ${msg}`, rawResponse: initData };
+  }
+
+  const { video_id: videoId, upload_url: uploadUrl } = initData;
+
+  // Step 2: download the video and upload its bytes to Facebook's upload URL
+  let videoBuffer: Buffer;
+  try {
+    const videoRes = await fetch(opts.videoUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!videoRes.ok) {
+      return { success: false, errorMessage: `Could not download video from URL: HTTP ${videoRes.status}` };
+    }
+    videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Download failed";
+    return { success: false, errorMessage: `Could not download reel video: ${msg}` };
+  }
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Authorization": `OAuth ${opts.accessToken}`,
+      "offset": "0",
+      "file_size": String(videoBuffer.byteLength),
+      "Content-Type": "application/octet-stream",
+    },
+    body: videoBuffer,
+    signal: AbortSignal.timeout(120_000),
+  });
+  const uploadData = (await uploadRes.json()) as { success?: boolean; error?: { message: string } };
+
+  if (!uploadRes.ok || uploadData.error || !uploadData.success) {
+    const msg = uploadData.error?.message ?? `HTTP ${uploadRes.status}`;
+    logger.error({ pageId: opts.pageId, error: uploadData.error }, "Facebook Reel byte upload failed");
+    return { success: false, errorMessage: `Reel upload failed: ${msg}`, rawResponse: uploadData };
+  }
+
+  // Step 3: publish the reel
+  const publishRes = await fetch(`${GRAPH}/${opts.pageId}/video_reels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      video_id: videoId,
+      upload_phase: "finish",
+      video_state: "PUBLISHED",
+      description: opts.description,
+      access_token: opts.accessToken,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const publishData = (await publishRes.json()) as { success?: boolean; error?: { message: string } };
+
+  if (!publishRes.ok || publishData.error || publishData.success === false) {
+    const msg = publishData.error?.message ?? `HTTP ${publishRes.status}`;
+    logger.error({ pageId: opts.pageId, error: publishData.error }, "Facebook Reel publish failed");
+    return { success: false, errorMessage: msg, rawResponse: publishData };
+  }
+
+  logger.info({ pageId: opts.pageId, videoId }, "Facebook Reel published");
+  return { success: true, externalPostId: videoId, rawResponse: publishData };
+}
+
+/**
+ * Facebook Event: create a Page event with name, start/end time, location, and description.
+ * Requires pages_manage_events (or pages_manage_posts on newer apps) permission.
+ */
+export async function publishEvent(opts: {
+  accessToken: string;
+  pageId: string;
+  name: string;
+  description: string;
+  startTime: string;
+  endTime?: string | null;
+  location?: string | null;
+  coverImageUrl?: string | null;
+}): Promise<PublishResult> {
+  logger.info({ pageId: opts.pageId, eventName: opts.name }, "Creating Facebook Event");
+
+  const body: Record<string, string> = {
+    name: opts.name,
+    description: opts.description,
+    start_time: opts.startTime,
+    access_token: opts.accessToken,
+  };
+  if (opts.endTime) body.end_time = opts.endTime;
+  if (opts.location) body.location = opts.location;
+  if (opts.coverImageUrl) body.cover = opts.coverImageUrl;
+
+  const res = await fetch(`${GRAPH}/${opts.pageId}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json()) as { id?: string; error?: { message: string; code: number } };
+
+  if (!res.ok || data.error || !data.id) {
+    const msg = data.error?.message ?? `HTTP ${res.status}`;
+    logger.error({ pageId: opts.pageId, error: data.error }, "Facebook Event creation failed");
+    return { success: false, errorMessage: msg, rawResponse: data };
+  }
+
+  logger.info({ pageId: opts.pageId, eventId: data.id }, "Facebook Event created");
   return { success: true, externalPostId: data.id, rawResponse: data };
 }
 
@@ -220,16 +494,12 @@ export async function getPagePosts(opts: {
   }));
 }
 
-/** Fetch the page's posts with comments embedded in one request.
- *  Uses /{pageId}/posts (page-created content only) which works with the
- *  page access token. /feed requires broader permissions and fails with #10. */
+/** Fetch the page's posts with comments embedded in one request. */
 export async function getPageFeedWithComments(opts: {
   accessToken: string;
   pageId: string;
   limit?: number;
 }): Promise<PagePostWithComments[]> {
-  // Step 1: get posts (no embedded comments — we'll fetch comments directly per-post
-  // because the direct /{post}/comments endpoint returns `from` when the nested query does not)
   const postsUrl = new URL(`${GRAPH}/${opts.pageId}/posts`);
   postsUrl.searchParams.set("access_token", opts.accessToken);
   postsUrl.searchParams.set("fields", "id,message,created_time");
@@ -248,7 +518,6 @@ export async function getPageFeedWithComments(opts: {
 
   const results: PagePostWithComments[] = [];
 
-  // Step 2: fetch comments for each post directly (returns `from` more reliably)
   for (const post of postsData.data ?? []) {
     const commentsUrl = new URL(`${GRAPH}/${post.id}/comments`);
     commentsUrl.searchParams.set("access_token", opts.accessToken);
@@ -335,7 +604,7 @@ export const facebookReplyToComment = replyToComment;
 // ─── Page Insights ─────────────────────────────────────────────────────────────
 
 export interface DailyDataPoint {
-  date: string; // YYYY-MM-DD
+  date: string;
   value: number;
 }
 
@@ -345,16 +614,12 @@ export interface PageInsights {
   reach30d: number;
   impressions30d: number;
   engagedUsers30d: number;
-  engagementRate: number; // (engagedUsers30d / reach30d) * 100, or 0
+  engagementRate: number;
   dailyReach: DailyDataPoint[];
   dailyImpressions: DailyDataPoint[];
   dailyEngaged: DailyDataPoint[];
 }
 
-/**
- * Fetch Facebook Page Insights for a given page over the last 30 days.
- * Requires the Page access token and the `read_insights` permission on the app.
- */
 export async function getPageInsights(opts: {
   accessToken: string;
   pageId: string;
@@ -362,7 +627,6 @@ export async function getPageInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  // Batch request: fetch lifetime fans + daily metrics in parallel
   const dailyMetrics = [
     "page_fans_adds",
     "page_impressions_unique",
@@ -371,7 +635,6 @@ export async function getPageInsights(opts: {
   ];
 
   const [fansRes, dailyRes] = await Promise.all([
-    // page_fans is a lifetime metric (no since/until)
     fetch(
       `${GRAPH}/${opts.pageId}/insights/page_fans?period=lifetime&access_token=${opts.accessToken}`,
       { signal: AbortSignal.timeout(15_000) },
@@ -401,11 +664,9 @@ export async function getPageInsights(opts: {
     logger.warn({ pageId: opts.pageId, error: dailyData.error }, "Facebook daily insights error");
   }
 
-  // Current follower count — last value in the series
   const fansEntry = fansData.data?.[0];
   const followers = fansEntry?.values?.at(-1)?.value ?? 0;
 
-  // Helper: pull a named metric's daily values
   const daily = (name: string): DailyDataPoint[] =>
     (dailyData.data?.find(d => d.name === name)?.values ?? []).map(v => ({
       date: v.end_time.slice(0, 10),

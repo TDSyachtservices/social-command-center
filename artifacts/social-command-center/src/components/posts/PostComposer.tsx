@@ -7,6 +7,10 @@ import { PlatformCaptionTabs } from "./PlatformCaptionTabs";
 import { SocialPreviewPanel } from "./SocialPreviewPanel";
 import { HashtagPicker } from "./HashtagPicker";
 import { MentionPicker } from "./MentionPicker";
+import { PostTypeSelector, type PostType } from "./PostTypeSelector";
+import { AlbumUploader } from "./AlbumUploader";
+import { EventFields, type EventMeta } from "./EventFields";
+import { MusicPicker, type SelectedMusic } from "./MusicPicker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -27,6 +31,14 @@ const SERVER_TO_PLATFORM: Record<string, Platform> = {
   LINKEDIN: "LinkedIn",
 };
 
+const EMPTY_EVENT_META: EventMeta = {
+  eventName: "",
+  eventStartTime: "",
+  eventEndTime: "",
+  eventLocation: "",
+  eventDescription: "",
+};
+
 interface PostComposerProps {
   editPostId?: string;
 }
@@ -45,6 +57,12 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [platformMedia, setPlatformMedia] = useState<Record<string, PlatformMediaValue | null>>({});
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("09:00");
+
+  // New post-type fields
+  const [postType, setPostType] = useState<PostType>("standard");
+  const [albumUrls, setAlbumUrls] = useState<string[]>([]);
+  const [eventMeta, setEventMeta] = useState<EventMeta>(EMPTY_EVENT_META);
+  const [selectedMusic, setSelectedMusic] = useState<SelectedMusic | null>(null);
 
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,6 +88,39 @@ export function PostComposer({ editPostId }: PostComposerProps) {
           .filter((p): p is Platform => Boolean(p));
         setPlatforms(postPlatforms.length > 0 ? postPlatforms : ["Facebook"]);
 
+        // Restore post type
+        const pt = post.postType;
+        if (pt && ["standard", "album", "story", "reel", "event"].includes(pt)) {
+          setPostType(pt as PostType);
+        }
+
+        // Restore album URLs
+        const addUrls = post.additionalMediaUrls;
+        if (Array.isArray(addUrls)) setAlbumUrls(addUrls);
+
+        // Restore metadata
+        const meta = post.postMetadataJson;
+        if (meta) {
+          if (meta.eventName || meta.eventStartTime) {
+            setEventMeta({
+              eventName: String(meta.eventName ?? ""),
+              eventStartTime: String(meta.eventStartTime ?? ""),
+              eventEndTime: String(meta.eventEndTime ?? ""),
+              eventLocation: String(meta.eventLocation ?? ""),
+              eventDescription: String(meta.eventDescription ?? ""),
+            });
+          }
+          if (meta.musicTrackId) {
+            setSelectedMusic({
+              trackId: String(meta.musicTrackId),
+              trackName: String(meta.musicTrackName ?? ""),
+              artistName: String(meta.musicArtistName ?? ""),
+              audioUrl: String(meta.musicAudioUrl ?? ""),
+              attribution: String(meta.musicAttribution ?? ""),
+            });
+          }
+        }
+
         const loadedMedia: Record<string, PlatformMediaValue | null> = {};
         const loadedCaptions: Record<string, string> = {};
         for (const pl of post.platforms) {
@@ -83,7 +134,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
             }
           }
         }
-        // Older posts only carry post-level media — apply it to every platform.
         if (Object.keys(loadedMedia).length === 0 && post.mediaUrl) {
           for (const key of postPlatforms) {
             loadedMedia[key] = { url: post.mediaUrl, type: post.mediaType === "video" ? "video" : "image" };
@@ -135,10 +185,13 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   );
 
   const buildEffectiveCaption = () => {
+    const base = postType === "event" && eventMeta.eventDescription
+      ? eventMeta.eventDescription
+      : masterCaption;
     const tags = platforms.flatMap((p) => platformHashtags[p] ?? []);
     const uniqueTags = [...new Set(tags)];
-    if (uniqueTags.length === 0) return masterCaption;
-    return `${masterCaption}\n\n${uniqueTags.join(" ")}`;
+    if (uniqueTags.length === 0) return base;
+    return `${base}\n\n${uniqueTags.join(" ")}`;
   };
 
   const buildPlatformMedia = () =>
@@ -151,15 +204,46 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         platformCaption: platformCaptions[p]?.trim() || null,
       }));
 
+  const buildPostMetadata = (): Record<string, unknown> | null => {
+    const meta: Record<string, unknown> = {};
+    if (postType === "event") {
+      meta.eventName = eventMeta.eventName || title;
+      meta.eventStartTime = eventMeta.eventStartTime
+        ? new Date(eventMeta.eventStartTime).toISOString()
+        : "";
+      meta.eventEndTime = eventMeta.eventEndTime
+        ? new Date(eventMeta.eventEndTime).toISOString()
+        : "";
+      meta.eventLocation = eventMeta.eventLocation;
+      meta.eventDescription = eventMeta.eventDescription;
+    }
+    if (postType === "reel" && selectedMusic) {
+      meta.musicTrackId = selectedMusic.trackId;
+      meta.musicTrackName = selectedMusic.trackName;
+      meta.musicArtistName = selectedMusic.artistName;
+      meta.musicAudioUrl = selectedMusic.audioUrl;
+      meta.musicAttribution = selectedMusic.attribution;
+    }
+    return Object.keys(meta).length > 0 ? meta : null;
+  };
+
   const buildPostBody = () => {
     const pm = buildPlatformMedia();
+    const primaryMedia = pm[0];
     return {
       title,
       masterCaption: buildEffectiveCaption(),
       platforms: platforms.map((p) => p.toUpperCase()),
       accountIds: getAccountIds(),
-      mediaUrl: pm[0]?.mediaUrl ?? undefined,
-      mediaType: pm[0]?.mediaType ?? undefined,
+      postType,
+      additionalMediaUrls: postType === "album" ? albumUrls.slice(1) : [],
+      postMetadataJson: buildPostMetadata(),
+      mediaUrl: postType === "album" && albumUrls.length > 0
+        ? albumUrls[0]
+        : primaryMedia?.mediaUrl ?? undefined,
+      mediaType: postType === "album" && albumUrls.length > 0
+        ? "image"
+        : primaryMedia?.mediaType ?? undefined,
       platformMedia: pm.length > 0 ? pm : undefined,
     };
   };
@@ -178,12 +262,16 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const accountIds = getAccountIds();
   const noConnectedAccounts = platforms.length > 0 && accountIds.length === 0;
-  const hasAnyMedia = platforms.some((p) => !!platformMedia[p]?.url);
-  const captionRequired = !hasAnyMedia;
-  const isFormValid = title.length > 0 && platforms.length > 0 && (masterCaption.length > 0 || hasAnyMedia) && !noConnectedAccounts;
+  const hasAnyMedia = postType === "album"
+    ? albumUrls.length >= 2
+    : platforms.some((p) => !!platformMedia[p]?.url);
+  const captionRequired = postType !== "album" && !hasAnyMedia;
+  const eventValid = postType !== "event" || (!!eventMeta.eventStartTime && !!(eventMeta.eventName || title));
+  const albumValid = postType !== "album" || albumUrls.length >= 2;
+  const isFormValid = title.length > 0 && platforms.length > 0 && (masterCaption.length > 0 || hasAnyMedia) && !noConnectedAccounts && eventValid && albumValid;
 
   const validationIssues = validatePostContent({ platforms, masterCaption, platformCaptions, platformHashtags, platformMedia });
-  const hasContentErrors = hasBlockingErrors(validationIssues);
+  const hasContentErrors = hasBlockingErrors(validationIssues) && postType === "standard";
 
   const handleSaveDraft = async () => {
     setIsSubmitting(true);
@@ -311,13 +399,42 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               </div>
             )}
 
+            <PostTypeSelector
+              value={postType}
+              onChange={setPostType}
+              availablePlatforms={platforms}
+            />
+
+            {/* Album uploader */}
+            {postType === "album" && (
+              <AlbumUploader
+                urls={albumUrls}
+                onChange={setAlbumUrls}
+                label="Album / Carousel Photos"
+                maxItems={10}
+                minItems={2}
+              />
+            )}
+
+            {/* Event fields */}
+            {postType === "event" && (
+              <EventFields value={eventMeta} onChange={setEventMeta} />
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Master Caption{captionRequired && <span className="text-destructive"> *</span>}
+                {postType === "event" ? "Post Caption" : "Master Caption"}
+                {captionRequired && <span className="text-destructive"> *</span>}
                 {!captionRequired && <span className="text-muted-foreground font-normal text-xs ml-1">(optional — you have media)</span>}
               </label>
               <Textarea
-                placeholder={captionRequired ? "Write your main message here..." : "Caption (optional)…"}
+                placeholder={
+                  postType === "event"
+                    ? "Promotional text for the event post…"
+                    : captionRequired
+                    ? "Write your main message here..."
+                    : "Caption (optional)…"
+                }
                 className="min-h-[120px]"
                 value={masterCaption}
                 onChange={e => setMasterCaption(e.target.value)}
@@ -345,12 +462,20 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               onChange={handleMentionChange}
             />
 
-            <PlatformMediaTabs
-              platforms={platforms}
-              platformMedia={platformMedia}
-              onChange={handlePlatformMediaChange}
-              onApplyToAll={handleApplyMediaToAll}
-            />
+            {/* Per-platform media — hidden for album (uses AlbumUploader) */}
+            {postType !== "album" && (
+              <PlatformMediaTabs
+                platforms={platforms}
+                platformMedia={platformMedia}
+                onChange={handlePlatformMediaChange}
+                onApplyToAll={handleApplyMediaToAll}
+              />
+            )}
+
+            {/* Music picker for reels */}
+            {postType === "reel" && (
+              <MusicPicker selected={selectedMusic} onSelect={setSelectedMusic} />
+            )}
 
             <PlatformCaptionTabs
               platforms={platforms}
@@ -386,7 +511,21 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               </div>
             </div>
 
-            <PlatformValidationNotice issues={validationIssues} />
+            {postType === "standard" && <PlatformValidationNotice issues={validationIssues} />}
+
+            {postType === "album" && !albumValid && albumUrls.length > 0 && (
+              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>Add at least 2 photos to publish as an album or carousel.</span>
+              </div>
+            )}
+
+            {postType === "event" && !eventValid && (
+              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>An Event requires a name and a start date/time.</span>
+              </div>
+            )}
 
             <div className="flex flex-wrap gap-3 pt-6 border-t">
               <Button
@@ -423,7 +562,11 @@ export function PostComposer({ editPostId }: PostComposerProps) {
             platforms={platforms}
             masterCaption={previewCaption}
             platformCaptions={platformCaptions}
-            mediaUrl={buildPlatformMedia()[0]?.mediaUrl ?? null}
+            mediaUrl={
+              postType === "album"
+                ? (albumUrls[0] ?? null)
+                : buildPlatformMedia()[0]?.mediaUrl ?? null
+            }
             platformMedia={platformMedia}
             date={date ? `${format(date, "PPP")} at ${time}` : "Preview"}
             accountNames={accountNames}
