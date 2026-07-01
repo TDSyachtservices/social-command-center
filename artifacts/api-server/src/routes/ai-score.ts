@@ -4,8 +4,8 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const OPENAI_BASE = (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "").replace(/\/$/, "");
-const OPENAI_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
+const getOpenAIBase = () => (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "").replace(/\/$/, "");
+const getOpenAIKey = () => process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "";
 
 // Cap the image we'll buffer + base64 into the vision request (defends memory/DoS).
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB
@@ -107,6 +107,9 @@ router.post("/score-image", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Missing required fields: imageUrl, platform, placement, width, height" });
     return;
   }
+
+  const OPENAI_BASE = getOpenAIBase();
+  const OPENAI_KEY = getOpenAIKey();
 
   if (!OPENAI_BASE || !OPENAI_KEY) {
     res.status(503).json({ error: "OpenAI integration not configured on this server." });
@@ -248,7 +251,11 @@ router.post("/generate-reply", async (req: Request, res: Response) => {
     return;
   }
 
+  const OPENAI_BASE = getOpenAIBase();
+  const OPENAI_KEY = getOpenAIKey();
+
   if (!OPENAI_BASE || !OPENAI_KEY) {
+    logger.warn({ hasBase: Boolean(OPENAI_BASE), hasKey: Boolean(OPENAI_KEY) }, "AI generate-reply: OpenAI integration not configured");
     res.status(503).json({ success: false, error: "OpenAI integration not configured" });
     return;
   }
@@ -324,6 +331,9 @@ router.post("/translate", async (req: Request, res: Response) => {
     res.status(400).json({ success: false, error: "text is required" });
     return;
   }
+  const OPENAI_BASE = getOpenAIBase();
+  const OPENAI_KEY = getOpenAIKey();
+
   if (!OPENAI_BASE || !OPENAI_KEY) {
     res.status(503).json({ success: false, error: "OpenAI integration not configured" });
     return;
