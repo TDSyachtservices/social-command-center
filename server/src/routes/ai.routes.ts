@@ -149,7 +149,7 @@ router.post(
 Write concise, on-brand replies to customer comments on social media posts.
 Tone: ${toneInstructions[body.tone] ?? "professional"}.
 Keep replies under 150 words. Do not use hashtags. Do not be overly formal or use filler phrases like "I hope this message finds you well".
-If relevant, you can mention contacting the sales team at sales@tdssupplyco.com.`;
+If relevant, you can mention contacting us at customerservice@teakdecking.com.`;
 
     const userPrompt = [
       body.postTitle ? `Post: "${body.postTitle}"` : null,
