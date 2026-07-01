@@ -2,7 +2,6 @@ import { prisma } from "../db/prisma.js";
 import { publishPostById } from "../services/publisher.js";
 import { logger } from "../utils/logger.js";
 import { decrypt } from "../utils/crypto.js";
-import { getPageInsights } from "../adapters/facebook.js";
 
 const POLL_INTERVAL_MS = 60_000;
 const FOLLOWER_POLL_INTERVAL_MS = 60 * 60_000; // 1 hour
@@ -98,24 +97,34 @@ async function followerPollTick(): Promise<void> {
       }
 
       try {
-        let followersCount = 0;
+        // Fetch follower count from the Graph API.
+        // Any API error is treated as a no-op: skip snapshot + notification
+        // so a transient failure never generates a false follower-change alert.
+        const field = account.platform === "FACEBOOK" ? "fan_count" : "followers_count";
+        const url = new URL(`https://graph.facebook.com/v19.0/${account.accountId}`);
+        url.searchParams.set("fields", field);
+        url.searchParams.set("access_token", accessToken);
+        const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+        const data = (await res.json()) as Record<string, unknown>;
 
-        if (account.platform === "FACEBOOK") {
-          const insights = await getPageInsights({ accessToken, pageId: account.accountId });
-          followersCount = insights.followers;
-        } else {
-          // Instagram — fetch basic profile follower count via Graph API
-          const url = new URL(`https://graph.facebook.com/v19.0/${account.accountId}`);
-          url.searchParams.set("fields", "followers_count");
-          url.searchParams.set("access_token", accessToken);
-          const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-          const data = (await res.json()) as { followers_count?: number; error?: { message: string } };
-          if (data.error) {
-            logger.warn({ accountId: account.id, error: data.error }, "Instagram followers_count error");
-            continue;
-          }
-          followersCount = data.followers_count ?? 0;
+        if (data["error"]) {
+          logger.warn(
+            { accountId: account.id, platform: account.platform, error: data["error"] },
+            "Follower poll: Graph API error — skipping snapshot",
+          );
+          continue;
         }
+
+        const rawCount = data[field];
+        if (typeof rawCount !== "number") {
+          logger.warn(
+            { accountId: account.id, platform: account.platform, field, data },
+            "Follower poll: unexpected response shape — skipping snapshot",
+          );
+          continue;
+        }
+
+        const followersCount = rawCount;
 
         // ── Compare with prior snapshot and emit a follower_change notification ──
         const prior = await prisma.platformStats.findFirst({
