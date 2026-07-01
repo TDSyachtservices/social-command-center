@@ -122,6 +122,9 @@ export async function cropToSpec(
   if (srcWidth > 0 && srcHeight > 0) {
     // Resize to cover the target, then crop WxH at a focal-point offset.
     // ceil() guarantees both resized dimensions are >= the target box.
+    // -auto-orient MUST come first so EXIF rotation is baked into pixels
+    // before we measure/crop — without it, portrait shots taken on phones
+    // arrive rotated 90° or 180° and the strip at the end locks that in.
     const scale = Math.max(W / srcWidth, H / srcHeight);
     const resizedW = Math.max(W, Math.ceil(srcWidth * scale));
     const resizedH = Math.max(H, Math.ceil(srcHeight * scale));
@@ -129,6 +132,7 @@ export async function cropToSpec(
     const offY = clamp(Math.round(focal.y * resizedH - H / 2), 0, resizedH - H);
     args = [
       inputPath,
+      "-auto-orient",                        // apply EXIF rotation before any crop
       "-resize", `${resizedW}x${resizedH}!`,
       "-crop", `${W}x${H}+${offX}+${offY}`,
       "+repage",
@@ -140,6 +144,7 @@ export async function cropToSpec(
     // Unknown source size: let ImageMagick cover-crop from the centre.
     args = [
       inputPath,
+      "-auto-orient",          // apply EXIF rotation before resize
       "-resize", `${W}x${H}^`,
       "-gravity", "center",
       "-extent", `${W}x${H}`,

@@ -563,6 +563,19 @@ export default function MediaOptimizer() {
   }, [displayedVersions, isScoringAll, scoreVersion, toast]);
 
   /**
+   * Given the raw platform/placement values from a MediaVersion, return the
+   * presetId string used by the selection checkboxes (display-name format).
+   */
+  function versionToPresetId(v: { platform: string; placement: string }): string {
+    const displayPlatform = PLATFORM_DISPLAY[v.platform] ?? v.platform;
+    const displayPlacement = v.placement
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return `${displayPlatform}-${displayPlacement}`;
+  }
+
+  /**
    * Generate platform versions by sending the image from localStorage (blob URL)
    * to Railway's ImageMagick pipeline. No need to re-open a file picker.
    */
@@ -634,17 +647,27 @@ export default function MediaOptimizer() {
       }));
 
       setAsset((prev) => prev ? { ...prev, allVersions: newVersions, processingStatus: "READY" } : prev);
-      setDisplayedVersions(newVersions);
+
+      // If the user had a selection active, filter down to only those versions
+      // so we don't override their choice and show all 9.
+      const filtered =
+        selectedPresets.length > 0
+          ? newVersions.filter((v) => selectedPresets.includes(versionToPresetId(v)))
+          : newVersions;
+      setDisplayedVersions(filtered.length > 0 ? filtered : newVersions);
 
       toast({
-        title: `${newVersions.length} versions generated`,
-        description: "All platform sizes are ready — click Edit Crop to adjust any of them.",
+        title: `${newVersions.length} version${newVersions.length !== 1 ? "s" : ""} generated`,
+        description:
+          filtered.length < newVersions.length
+            ? `Showing ${filtered.length} selected. Click Show All to see every size.`
+            : "All platform sizes are ready — click Edit Crop to adjust any of them.",
       });
     } finally {
       setIsProcessing(false);
       setProcessingStep("");
     }
-  }, [asset, isProcessing, toast]);
+  }, [asset, isProcessing, selectedPresets, toast]);
 
   if (!assetId || !asset) {
     return (
@@ -692,16 +715,20 @@ export default function MediaOptimizer() {
         else missing.push(`${platform} ${placementLabel}`);
       }
 
-      setDisplayedVersions(matched.length > 0 ? matched : asset!.allVersions);
-
       if (asset!.allVersions.length === 0) {
         // Truly no server versions exist yet — generate them now.
+        // handleProcessImage will filter by selectedPresets after generation.
         void handleProcessImage();
-      } else if (missing.length > 0) {
-        toast({
-          title: `${matched.length} version${matched.length !== 1 ? "s" : ""} ready`,
-          description: `No version found for: ${missing.join(", ")}.`,
-        });
+      } else {
+        // Versions exist — show only the matched subset. Never fall back to
+        // showing all versions when the user has made a selection.
+        setDisplayedVersions(matched);
+        if (missing.length > 0) {
+          toast({
+            title: `${matched.length} version${matched.length !== 1 ? "s" : ""} shown`,
+            description: `No version found for: ${missing.join(", ")}.`,
+          });
+        }
       }
     } finally {
       setIsGenerating(false);
