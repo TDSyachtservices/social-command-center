@@ -3,7 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Send, Save, Trash2, Loader2 } from "lucide-react";
-import { sendReply, generateReply } from "@/lib/api";
+import { sendReply } from "@/lib/api";
 
 interface ReplyComposerProps {
   commentId: string;
@@ -24,9 +24,14 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
     setIsGenerating(true);
     setError(null);
     try {
-      const result = await generateReply({ commentText, tone, postTitle, postCaption });
-      if (!result) throw new Error("Failed to generate reply");
-      setReply(result.reply);
+      const res = await fetch("/api/ai/generate-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentText, tone, postTitle, postCaption }),
+      });
+      const data = await res.json() as { success?: boolean; data?: { reply?: string }; error?: string };
+      if (!res.ok || !data.success) throw new Error(data.error ?? "Failed to generate reply");
+      setReply(data.data?.reply ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate reply");
     } finally {

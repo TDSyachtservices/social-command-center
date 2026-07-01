@@ -268,7 +268,7 @@ router.post("/generate-reply", async (req: Request, res: Response) => {
 Write concise, on-brand replies to customer comments on social media posts.
 Tone: ${toneDesc}.
 Keep replies under 150 words. Do not use hashtags. Do not use filler phrases like "I hope this message finds you well".
-If relevant, mention contacting the sales team at sales@tdssupplyco.com.`;
+If relevant, you can mention contacting us at customerservice@teakdecking.com.`;
 
   const lines: string[] = [];
   if (body.postTitle) lines.push(`Post: "${body.postTitle}"`);
