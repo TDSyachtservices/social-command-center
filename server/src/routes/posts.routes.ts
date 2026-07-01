@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody, validateQuery } from "../utils/validation.js";
@@ -154,7 +155,7 @@ router.post(
         mediaType: postMediaType,
         postType: body.postType ?? "standard",
         additionalMediaUrls: body.additionalMediaUrls ?? [],
-        postMetadataJson: body.postMetadataJson ?? null,
+        ...(body.postMetadataJson != null ? { postMetadataJson: body.postMetadataJson as Prisma.InputJsonValue } : {}),
         platforms: { create: platformRows },
       },
       include: { platforms: true },
@@ -200,7 +201,7 @@ router.patch(
               : {}),
           ...(body.postType !== undefined ? { postType: body.postType } : {}),
           ...(body.additionalMediaUrls !== undefined ? { additionalMediaUrls: body.additionalMediaUrls } : {}),
-          ...(body.postMetadataJson !== undefined ? { postMetadataJson: body.postMetadataJson ?? null } : {}),
+          ...(body.postMetadataJson != null ? { postMetadataJson: body.postMetadataJson as Prisma.InputJsonValue } : {}),
         },
       });
 
