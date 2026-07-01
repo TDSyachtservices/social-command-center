@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { listAccounts, createPost, updatePost, schedulePost, publishPost, getPost, type ApiAccount } from "@/lib/api";
 import { validatePostContent, hasBlockingErrors } from "@/lib/platformValidation";
 import { PlatformValidationNotice } from "./PlatformValidationNotice";
+import { AiCaptionReviser } from "./AiCaptionReviser";
 
 const SERVER_TO_PLATFORM: Record<string, Platform> = {
   FACEBOOK: "Facebook",
@@ -321,7 +322,13 @@ export function PostComposer({ editPostId }: PostComposerProps) {
                 value={masterCaption}
                 onChange={e => setMasterCaption(e.target.value)}
               />
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center">
+                <AiCaptionReviser
+                  caption={masterCaption}
+                  platforms={platforms}
+                  onAccept={(revised) => setMasterCaption(revised)}
+                  disabled={isSubmitting}
+                />
                 <span className="text-xs text-muted-foreground">{masterCaption.length} chars</span>
               </div>
             </div>

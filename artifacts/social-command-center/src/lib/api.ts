@@ -654,6 +654,18 @@ export async function generateCaption(body: {
   return result.ok ? result.data : null;
 }
 
+export async function improveCaption(body: {
+  caption: string;
+  instructions: string;
+  platform?: string;
+}): Promise<{ caption: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ caption: string; mock?: boolean }>("/api/ai/improve-caption", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
 export async function generateReply(body: {
   commentText: string;
   commenterName?: string;

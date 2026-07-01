@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
-  Link2, ScrollText, MessageCircle, Bot, Globe, Settings,
+  Link2, ScrollText, MessageCircle, Globe, Settings,
   Image as ImageIcon, BarChart2, ChevronDown, Hash, AtSign,
   Instagram, Facebook,
 } from "lucide-react";
@@ -50,7 +50,6 @@ const sections: NavSection[] = [
       { href: "/social-inbox",  label: "Social Inbox",  icon: MessageSquare },
       { href: "/instagram",     label: "Instagram",     icon: Instagram     },
       { href: "/facebook",      label: "Facebook",      icon: Facebook      },
-      { href: "/ai-assistant",  label: "AI Assistant",  icon: Bot           },
     ],
   },
   {

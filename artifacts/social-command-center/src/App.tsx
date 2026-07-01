@@ -13,7 +13,6 @@ import SocialInbox from "@/pages/social-inbox";
 import ConnectedAccounts from "@/pages/connected-accounts";
 import PublishLogs from "@/pages/publish-logs";
 import CommentLogs from "@/pages/comment-logs";
-import AIAssistant from "@/pages/ai-assistant";
 import WebsiteApi from "@/pages/website-api";
 import Settings from "@/pages/settings";
 import MediaLibrary from "@/pages/media-library";
@@ -43,7 +42,6 @@ function DashboardRouter() {
         <Route path="/connected-accounts" component={ConnectedAccounts} />
         <Route path="/publish-logs" component={PublishLogs} />
         <Route path="/comment-logs" component={CommentLogs} />
-        <Route path="/ai-assistant" component={AIAssistant} />
         <Route path="/website-api" component={WebsiteApi} />
         <Route path="/settings" component={Settings} />
         <Route path="/kpi/metric/:metricId" component={KpiMetric} />

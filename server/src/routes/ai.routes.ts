@@ -79,9 +79,7 @@ Provide one caption per platform, separated clearly. Keep captions platform-appr
 const improveCaptionSchema = z.object({
   caption: z.string().min(1).max(5000),
   instructions: z.string().min(1).max(1000),
-  platform: z
-    .enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"])
-    .optional(),
+  platform: z.string().max(200).optional(),
 });
 
 router.post(
@@ -90,10 +88,38 @@ router.post(
   async (req: Request, res: Response) => {
     const body = req.body as z.infer<typeof improveCaptionSchema>;
 
-    sendSuccess(res, {
-      caption: `[Improved] ${body.caption.slice(0, 100)}... (AI improvement: ${body.instructions})`,
-      mock: true,
-    });
+    const systemPrompt = `You are a social media copywriter for TDS Yacht Services, a marine decking and yacht services company.
+Rewrite the provided caption according to the instructions given.
+Keep the core message and key information intact.
+Preserve any hashtags that were in the original unless instructed otherwise.
+Keep a similar length unless the instructions say otherwise.
+Return only the rewritten caption with no explanation, preamble, or quotes.`;
+
+    try {
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 512,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              `Original caption:\n${body.caption}`,
+              `Instructions: ${body.instructions}`,
+              body.platform ? `Optimise for: ${body.platform}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        ],
+      });
+      const revised = completion.choices[0]?.message?.content?.trim() ?? body.caption;
+      sendSuccess(res, { caption: revised, model: "gpt-4o-mini" });
+    } catch (err) {
+      logger.warn({ err }, "AI improve-caption failed");
+      sendError(res, "AI_ERROR", "Failed to improve caption", undefined, 500);
+    }
   },
 );
 
