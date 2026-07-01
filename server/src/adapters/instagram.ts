@@ -258,21 +258,16 @@ export async function publishStory(opts: {
 }
 
 /**
- * Instagram Reel with optional music credit.
- * The video must already have the desired audio baked in — the Graph API
- * does not accept external audio URLs or IG music library tracks directly.
- * The musicCredit string is appended to the caption as a credit line.
+ * Instagram Reel. The video must already have the desired audio baked in —
+ * the Graph API does not accept external audio URLs or music library tracks.
  */
 export async function publishReel(opts: {
   accessToken: string;
   igUserId: string;
   videoUrl: string;
   caption: string;
-  musicCredit?: string | null;
 }): Promise<PublishResult> {
-  const caption = opts.musicCredit
-    ? `${opts.caption}\n\n🎵 ${opts.musicCredit}`
-    : opts.caption;
+  const caption = opts.caption;
 
   logger.info({ igUserId: opts.igUserId }, "Creating Instagram Reel container");
 

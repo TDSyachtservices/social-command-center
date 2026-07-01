@@ -310,8 +310,7 @@ async function dispatchInstagram(opts: {
       if (!mediaUrl) {
         return { success: false, errorMessage: "Instagram Reel requires a video." };
       }
-      const musicCredit = meta.musicTrackName ? String(meta.musicTrackName) : null;
-      return igPublishReel({ accessToken, igUserId, videoUrl: mediaUrl, caption, musicCredit });
+      return igPublishReel({ accessToken, igUserId, videoUrl: mediaUrl, caption });
     }
 
     case "event":

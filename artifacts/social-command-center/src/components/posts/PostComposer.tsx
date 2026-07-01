@@ -10,7 +10,6 @@ import { MentionPicker } from "./MentionPicker";
 import { PostTypeSelector, type PostType } from "./PostTypeSelector";
 import { AlbumUploader } from "./AlbumUploader";
 import { EventFields, type EventMeta } from "./EventFields";
-import { MusicPicker, type SelectedMusic } from "./MusicPicker";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -62,7 +61,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [postType, setPostType] = useState<PostType>("standard");
   const [albumUrls, setAlbumUrls] = useState<string[]>([]);
   const [eventMeta, setEventMeta] = useState<EventMeta>(EMPTY_EVENT_META);
-  const [selectedMusic, setSelectedMusic] = useState<SelectedMusic | null>(null);
 
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -108,15 +106,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               eventEndTime: String(meta.eventEndTime ?? ""),
               eventLocation: String(meta.eventLocation ?? ""),
               eventDescription: String(meta.eventDescription ?? ""),
-            });
-          }
-          if (meta.musicTrackId) {
-            setSelectedMusic({
-              trackId: String(meta.musicTrackId),
-              trackName: String(meta.musicTrackName ?? ""),
-              artistName: String(meta.musicArtistName ?? ""),
-              audioUrl: String(meta.musicAudioUrl ?? ""),
-              attribution: String(meta.musicAttribution ?? ""),
             });
           }
         }
@@ -216,13 +205,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         : "";
       meta.eventLocation = eventMeta.eventLocation;
       meta.eventDescription = eventMeta.eventDescription;
-    }
-    if (postType === "reel" && selectedMusic) {
-      meta.musicTrackId = selectedMusic.trackId;
-      meta.musicTrackName = selectedMusic.trackName;
-      meta.musicArtistName = selectedMusic.artistName;
-      meta.musicAudioUrl = selectedMusic.audioUrl;
-      meta.musicAttribution = selectedMusic.attribution;
     }
     return Object.keys(meta).length > 0 ? meta : null;
   };
@@ -472,10 +454,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
               />
             )}
 
-            {/* Music picker for reels */}
-            {postType === "reel" && (
-              <MusicPicker selected={selectedMusic} onSelect={setSelectedMusic} />
-            )}
 
             <PlatformCaptionTabs
               platforms={platforms}
