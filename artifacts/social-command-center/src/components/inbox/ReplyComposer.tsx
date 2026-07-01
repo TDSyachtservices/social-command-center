@@ -3,7 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Send, Save, Trash2, Loader2 } from "lucide-react";
-import { sendReply } from "@/lib/api";
+import { sendReply, generateReply } from "@/lib/api";
 
 interface ReplyComposerProps {
   commentId: string;
@@ -24,16 +24,9 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
     setIsGenerating(true);
     setError(null);
     try {
-      // Calls the Replit API server directly (relative URL) — it has Replit's built-in OpenAI access.
-      const res = await fetch("/api/ai/generate-reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commentText, tone, postTitle, postCaption }),
-      });
-      const data = await res.json() as { success?: boolean; data?: { reply?: string }; error?: string };
-      if (!res.ok || !data.success) throw new Error(data.error ?? "Failed to generate reply");
-      const generatedReply = data.data?.reply ?? "";
-      setReply(generatedReply);
+      const result = await generateReply({ commentText, tone, postTitle, postCaption });
+      if (!result) throw new Error("Failed to generate reply");
+      setReply(result.reply);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate reply");
     } finally {
@@ -59,7 +52,7 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
 
   const quickInserts = [
     { label: "Thank you", text: "Thank you for reaching out!" },
-    { label: "Contact info", text: "Please contact our sales team at sales@marinedeckingco.com." },
+    { label: "Contact info", text: "Please contact us at customerservice@teakdecking.com." },
     { label: "Website", text: "You can find more details on our website." }
   ];
 

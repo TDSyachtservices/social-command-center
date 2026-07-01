@@ -228,6 +228,7 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
 
         <div className="border-t pt-6 mt-6">
           <ReplyComposer
+            key={comment.id}
             commentId={comment.id}
             commentText={comment.commentText}
             postTitle={comment.originalPostTitle}
@@ -237,7 +238,7 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
               setStatus("replied" as MockComment["status"]);
               onFieldChange?.({ status: "replied" as MockComment["status"] });
               if (fbStatus === "failed") {
-                const platformLabel = comment.platform === "INSTAGRAM" ? "Instagram" : "Facebook";
+                const platformLabel = comment.platform === "Instagram" ? "Instagram" : "Facebook";
                 toast({ title: `Reply saved but failed to post on ${platformLabel}`, description: fbError ?? "Check your account access token.", variant: "destructive" });
               } else {
                 toast({ title: "Reply sent successfully" });

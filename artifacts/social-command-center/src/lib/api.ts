@@ -662,9 +662,11 @@ export async function generateCaption(body: {
 
 export async function generateReply(body: {
   commentText: string;
-  commenterName: string;
-  platform: string;
+  commenterName?: string;
+  platform?: string;
   tone?: string;
+  postTitle?: string;
+  postCaption?: string;
 }): Promise<{ reply: string; mock?: boolean } | null> {
   const result = await apiFetch<{ reply: string; mock?: boolean }>("/api/ai/generate-reply", {
     method: "POST",
