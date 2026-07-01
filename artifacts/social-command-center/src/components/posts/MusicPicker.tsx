@@ -35,13 +35,22 @@ const PRESET_TAGS = ["upbeat", "ambient", "cinematic", "electronic", "acoustic",
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function searchTracks(q: string, tags: string): Promise<{ tracks: MusicTrack[]; error?: string }> {
-  const qs = new URLSearchParams({ q, tags, limit: "18" });
-  const res = await fetch(`${API_BASE}/api/music/search?${qs}`);
-  const data = await res.json() as { success?: boolean; data?: MusicTrack[]; error?: string; message?: string };
-  if (!res.ok || !data.success) {
-    return { tracks: [], error: data.message ?? data.error ?? "Music search failed" };
+  try {
+    const qs = new URLSearchParams({ q, tags, limit: "18" });
+    const res = await fetch(`${API_BASE}/api/music/search?${qs}`);
+    const data = await res.json() as { success?: boolean; data?: MusicTrack[]; error?: { code?: string; message?: string } | string; message?: string };
+    if (!res.ok || !data.success) {
+      const errObj = data.error;
+      const msg =
+        data.message ??
+        (typeof errObj === "string" ? errObj : errObj?.message) ??
+        "Music search failed";
+      return { tracks: [], error: msg };
+    }
+    return { tracks: data.data ?? [] };
+  } catch (e) {
+    return { tracks: [], error: e instanceof Error ? e.message : "Network error — could not reach music search" };
   }
-  return { tracks: data.data ?? [] };
 }
 
 function formatDuration(seconds: number): string {

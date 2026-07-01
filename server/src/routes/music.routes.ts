@@ -9,9 +9,9 @@ const router = Router();
 const JAMENDO_API = "https://api.jamendo.com/v3.0";
 
 const searchQuerySchema = z.object({
-  q: z.string().default(""),
-  tags: z.string().default(""),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
+  q: z.string().optional(),
+  tags: z.string().optional(),
+  limit: z.string().optional(),
 });
 
 export interface MusicTrack {
@@ -37,6 +37,7 @@ router.get(
   validateQuery(searchQuerySchema),
   async (req: Request, res: Response) => {
     const q = (req as Request & { validatedQuery: z.infer<typeof searchQuerySchema> }).validatedQuery;
+    const limitNum = Math.min(50, Math.max(1, parseInt(q.limit ?? "18", 10) || 18));
 
     const clientId = process.env.JAMENDO_CLIENT_ID;
     if (!clientId) {
@@ -50,7 +51,7 @@ router.get(
       const url = new URL(`${JAMENDO_API}/tracks/`);
       url.searchParams.set("client_id", clientId);
       url.searchParams.set("format", "json");
-      url.searchParams.set("limit", String(q.limit));
+      url.searchParams.set("limit", String(limitNum));
       url.searchParams.set("include", "musicinfo");
       url.searchParams.set("audioformat", "mp32");
       url.searchParams.set("groupby", "artist_id");
