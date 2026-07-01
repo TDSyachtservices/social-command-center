@@ -6,12 +6,8 @@ import { validateBody } from "../utils/validation.js";
 import { prisma } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
 
-const openai = new OpenAI({
-  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
-    ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
-    : {}),
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "placeholder",
-});
+const getOpenAI = () =>
+  new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
 
 const router = Router();
 
@@ -36,12 +32,7 @@ router.post(
     const aiSetting = await prisma.setting.findUnique({ where: { key: "ai" } });
     const aiConfig = (aiSetting?.value as Record<string, unknown>) ?? {};
 
-    const endpoint =
-      (aiConfig.endpoint as string | undefined) ??
-      process.env.LOCAL_AI_ENDPOINT ??
-      "http://localhost:11434/v1";
-    const model = (aiConfig.model as string | undefined) ?? "llama3-70b";
-    const temperature = (aiConfig.temperature as number | undefined) ?? 0.7;
+    const model = (aiConfig.model as string | undefined) ?? "gpt-4o-mini";
     const brandVoice =
       (aiConfig.brandVoice as string | undefined) ??
       "Professional, authoritative, marine-industry focused.";
@@ -58,28 +49,13 @@ ${body.additionalContext ? `Additional context: ${body.additionalContext}` : ""}
 Provide one caption per platform, separated clearly. Keep captions platform-appropriate in length and style. Include relevant hashtags.`;
 
     try {
-      const aiRes = await fetch(`${endpoint}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.LOCAL_AI_API_KEY ?? "none"}`,
-        },
-        body: JSON.stringify({
-          model,
-          temperature,
-          messages: [{ role: "user", content: prompt }],
-        }),
-        signal: AbortSignal.timeout(30_000),
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model,
+        max_completion_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
       });
-
-      if (!aiRes.ok) {
-        throw new Error(`AI endpoint returned ${aiRes.status}`);
-      }
-
-      const data = (await aiRes.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = data.choices?.[0]?.message?.content ?? "";
+      const content = completion.choices[0]?.message?.content ?? "";
       sendSuccess(res, { caption: content, model, platform: platformList });
     } catch (err) {
       logger.warn(err, "AI caption generation failed — returning mock");
@@ -161,8 +137,9 @@ If relevant, you can mention contacting us at customerservice@teakdecking.com.`;
       .join("\n");
 
     try {
+      const openai = getOpenAI();
       const completion = await openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-4o-mini",
         max_completion_tokens: 256,
         messages: [
           { role: "system", content: systemPrompt },
@@ -171,10 +148,144 @@ If relevant, you can mention contacting us at customerservice@teakdecking.com.`;
       });
 
       const reply = completion.choices[0]?.message?.content?.trim() ?? "";
-      sendSuccess(res, { reply, model: "gpt-5-mini" });
+      sendSuccess(res, { reply, model: "gpt-4o-mini" });
     } catch (err) {
       logger.error({ err }, "AI generate-reply failed");
       sendError(res, "AI_ERROR", "Failed to generate reply", undefined, 500);
+    }
+  },
+);
+
+// ─── POST /api/ai/translate ────────────────────────────────────────────────────
+const translateSchema = z.object({
+  text: z.string().min(1).max(5000),
+});
+
+router.post(
+  "/translate",
+  validateBody(translateSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof translateSchema>;
+
+    const systemPrompt = `You are a translation assistant.
+Detect the language of the user-supplied text.
+If it is already English, return it unchanged.
+Reply with ONLY valid JSON (no markdown, no code fences):
+{"detected":"<ISO 639-1 language name, e.g. Spanish>","translation":"<English translation>"}`;
+
+    try {
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 512,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: body.text },
+        ],
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+      const parsed = JSON.parse(raw) as { detected?: string; translation?: string };
+      sendSuccess(res, {
+        detected: parsed.detected ?? "Unknown",
+        translation: parsed.translation ?? body.text,
+      });
+    } catch (err) {
+      logger.warn({ err }, "AI translate failed");
+      sendError(res, "AI_ERROR", "Translation failed", undefined, 500);
+    }
+  },
+);
+
+// ─── POST /api/ai/score-image ─────────────────────────────────────────────────
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+const scoreImageSchema = z.object({
+  imageUrl: z.string().url(),
+  platform: z.string().min(1),
+  placement: z.string().min(1),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+});
+
+router.post(
+  "/score-image",
+  validateBody(scoreImageSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof scoreImageSchema>;
+
+    let imageBase64: string;
+    let mimeType = "image/jpeg";
+    try {
+      const imgRes = await fetch(body.imageUrl, {
+        signal: AbortSignal.timeout(15_000),
+        redirect: "follow",
+      });
+      if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status}`);
+
+      const ct = imgRes.headers.get("content-type") ?? "";
+      if (!ct.startsWith("image/")) throw new Error(`Not an image: ${ct}`);
+
+      const buf = await imgRes.arrayBuffer();
+      if (buf.byteLength > MAX_IMAGE_BYTES) throw new Error("Image too large");
+
+      if (ct.includes("png")) mimeType = "image/png";
+      else if (ct.includes("webp")) mimeType = "image/webp";
+
+      imageBase64 = Buffer.from(buf).toString("base64");
+    } catch (err) {
+      sendError(res, "IMAGE_FETCH_FAILED", `Could not fetch image: ${String(err).slice(0, 120)}`, undefined, 422);
+      return;
+    }
+
+    const prompt = `You are a social media image quality reviewer.
+
+You are looking at a ${body.width}×${body.height}px cropped image intended for: ${body.platform} ${body.placement.replace(/_/g, " ")}.
+
+Assess whether this crop looks good as a social media post image. Consider:
+1. Is the main subject (person, product, logo, boat, vessel) fully visible and not cut off?
+2. Is the image sharp and in focus?
+3. Is the composition acceptable for ${body.platform} (right breathing room, subject well-framed)?
+4. Are there obvious problems — mostly blank/grey, severe distortion, key content cropped out?
+
+Reply with ONLY valid JSON (no markdown, no code fences):
+{"label":"Excellent","score":0.95,"reason":"One sentence explanation."}
+
+Labels: "Excellent" (great, ready to post), "Good" (minor imperfections, acceptable), "Needs Review" (something notable wrong), "Poor" (major problem — subject cut off, blank image, severe distortion).`;
+
+    try {
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 200,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "image_url",
+                image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "low" },
+              },
+            ],
+          },
+        ],
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+      const parsed = JSON.parse(raw) as { label?: string; score?: number; reason?: string };
+
+      const validLabels = ["Excellent", "Good", "Needs Review", "Poor"] as const;
+      const label = validLabels.includes(parsed.label as (typeof validLabels)[number])
+        ? (parsed.label as (typeof validLabels)[number])
+        : "Needs Review";
+      const score = typeof parsed.score === "number" ? Math.min(1, Math.max(0, parsed.score)) : 0.5;
+      const reason = typeof parsed.reason === "string" ? parsed.reason : "No explanation provided.";
+
+      sendSuccess(res, { label, score, reason });
+    } catch (err) {
+      logger.warn({ err }, "AI score-image failed");
+      sendError(res, "AI_ERROR", "AI scoring failed", undefined, 500);
     }
   },
 );
@@ -247,27 +358,12 @@ router.post(
 
 // ─── GET /api/ai/status ────────────────────────────────────────────────────────
 router.get("/status", async (_req: Request, res: Response) => {
-  const aiSetting = await prisma.setting.findUnique({ where: { key: "ai" } });
-  const aiConfig = (aiSetting?.value as Record<string, unknown>) ?? {};
-  const endpoint =
-    (aiConfig.endpoint as string | undefined) ??
-    process.env.LOCAL_AI_ENDPOINT ??
-    "http://localhost:11434/v1";
-
-  try {
-    const pingRes = await fetch(`${endpoint}/models`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!pingRes.ok) throw new Error(`Status ${pingRes.status}`);
-    const data = (await pingRes.json()) as { data?: unknown[] };
-    sendSuccess(res, {
-      connected: true,
-      endpoint,
-      models: data.data ?? [],
-    });
-  } catch {
-    sendError(res, "AI_UNAVAILABLE", "AI endpoint unreachable", { endpoint }, 503);
-  }
+  const hasKey = Boolean(process.env.OPENAI_API_KEY);
+  sendSuccess(res, {
+    connected: hasKey,
+    endpoint: "https://api.openai.com/v1",
+    models: hasKey ? ["gpt-4o-mini"] : [],
+  });
 });
 
 export default router;

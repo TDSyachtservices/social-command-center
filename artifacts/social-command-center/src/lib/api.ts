@@ -539,8 +539,7 @@ export interface AiScoreResult {
 }
 
 /**
- * Score a single cropped image version using GPT vision via the Replit api-server proxy.
- * The Replit server has access to the OpenAI integration; Railway does not.
+ * Score a single cropped image version using GPT vision via the Railway server.
  */
 export async function scoreImageWithAi(params: {
   imageUrl: string;
@@ -549,17 +548,12 @@ export async function scoreImageWithAi(params: {
   width: number;
   height: number;
 }): Promise<AiScoreResult | null> {
-  try {
-    const res = await fetch("/api/ai/score-image", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as AiScoreResult;
-  } catch {
-    return null;
-  }
+  const result = await apiFetch<AiScoreResult>("/api/ai/score-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return result.ok ? result.data : null;
 }
 
 /**
@@ -676,17 +670,11 @@ export async function generateReply(body: {
 }
 
 export async function translateComment(text: string): Promise<{ detected: string; translation: string } | null> {
-  try {
-    const res = await fetch("/api/ai/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const json = await res.json() as { success: boolean; data?: { detected: string; translation: string }; error?: string };
-    return json.success && json.data ? json.data : null;
-  } catch {
-    return null;
-  }
+  const result = await apiFetch<{ detected: string; translation: string }>("/api/ai/translate", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+  return result.ok ? result.data : null;
 }
 
 export async function analyzeComment(body: {
