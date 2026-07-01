@@ -106,9 +106,11 @@ model SocialAccount {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  postPlatforms ScheduledPostPlatform[]
-  comments      SocialComment[]
-  syncLogs      SocialInboxSyncLog[]
+  postPlatforms  ScheduledPostPlatform[]
+  comments       SocialComment[]
+  syncLogs       SocialInboxSyncLog[]
+  notifications  Notification[]
+  platformStats  PlatformStats[]
 }
 
 model MediaAsset {
@@ -324,8 +326,25 @@ model Notification {
   title      String
   body       String?
   payload    Json?
+  isRead     Boolean  @default(false)
   occurredAt DateTime @default(now())
   createdAt  DateTime @default(now())
 
+  account SocialAccount? @relation(fields: [accountId], references: [id])
+
   @@unique([platform, externalId])
+  @@index([platform, isRead])
+  @@index([createdAt])
+}
+
+model PlatformStats {
+  id             String   @id @default(cuid())
+  platform       String
+  accountId      String
+  followersCount Int
+  polledAt       DateTime @default(now())
+
+  account SocialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, polledAt])
 }
