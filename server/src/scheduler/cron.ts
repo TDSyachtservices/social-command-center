@@ -117,6 +117,36 @@ async function followerPollTick(): Promise<void> {
           followersCount = data.followers_count ?? 0;
         }
 
+        // ── Compare with prior snapshot and emit a follower_change notification ──
+        const prior = await prisma.platformStats.findFirst({
+          where: { accountId: account.id },
+          orderBy: { polledAt: "desc" },
+          select: { followersCount: true },
+        });
+
+        if (prior !== null && prior.followersCount !== followersCount) {
+          const delta = followersCount - prior.followersCount;
+          const direction = delta > 0 ? "gained" : "lost";
+          const abs = Math.abs(delta);
+
+          await prisma.notification.create({
+            data: {
+              platform: account.platform,
+              accountId: account.id,
+              type: "follower_change",
+              title: `${account.accountName} ${direction} ${abs} follower${abs !== 1 ? "s" : ""}`,
+              body: `Followers changed from ${prior.followersCount.toLocaleString()} to ${followersCount.toLocaleString()}`,
+              isRead: false,
+            },
+          });
+
+          logger.info(
+            { accountId: account.id, platform: account.platform, prior: prior.followersCount, current: followersCount, delta },
+            "Follower count changed — notification created",
+          );
+        }
+
+        // Persist the new snapshot regardless of whether count changed.
         await prisma.platformStats.create({
           data: {
             platform: account.platform,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Check, CheckCheck, MessageSquare, Heart, UserPlus, AtSign, MessageCircle } from "lucide-react";
+import { Bell, Check, CheckCheck, MessageSquare, Heart, UserPlus, AtSign, MessageCircle, TrendingUp, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,9 @@ const typeIcon: Record<string, React.ElementType> = {
   reaction: Heart,
   follow: UserPlus,
   message: MessageCircle,
+  follower_change: TrendingUp,
+  review: Star,
+  rating: Star,
 };
 
 function typeLabel(type: string): string {
@@ -33,8 +36,11 @@ function typeLabel(type: string): string {
     reaction: "Reaction",
     follow: "Follow",
     message: "Message",
+    follower_change: "Followers",
+    review: "Review",
+    rating: "Rating",
   };
-  return map[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+  return map[type] ?? type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
 }
 
 function timeAgo(dateStr: string): string {
@@ -46,6 +52,36 @@ function timeAgo(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+/** Returns a date group label: "Today", "Yesterday", or e.g. "Mon 28 Jun" */
+function dateGroup(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (d.toDateString() === todayStr) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Group notifications by date label, preserving order. */
+function groupByDate(items: ApiNotification[]): { label: string; items: ApiNotification[] }[] {
+  const groups: { label: string; items: ApiNotification[] }[] = [];
+  const seen = new Map<string, number>();
+
+  for (const item of items) {
+    const label = dateGroup(item.occurredAt);
+    if (seen.has(label)) {
+      groups[seen.get(label)!].items.push(item);
+    } else {
+      seen.set(label, groups.length);
+      groups.push({ label, items: [item] });
+    }
+  }
+  return groups;
 }
 
 export function NotificationFeed({
@@ -113,6 +149,8 @@ export function NotificationFeed({
     );
   }
 
+  const groups = groupByDate(items);
+
   return (
     <div className={cn("rounded-lg border bg-card flex flex-col", className)}>
       <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
@@ -139,7 +177,7 @@ export function NotificationFeed({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y">
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-6 text-center text-sm text-muted-foreground">Loading…</div>
         ) : items.length === 0 ? (
@@ -148,61 +186,71 @@ export function NotificationFeed({
             No notifications yet
           </div>
         ) : (
-          items.map((n) => {
-            const Icon = typeIcon[n.type] ?? Bell;
-            return (
-              <div
-                key={n.id}
-                className={cn(
-                  "flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors",
-                  !n.isRead && "bg-blue-50/50 dark:bg-blue-950/20",
-                )}
-              >
-                <div
-                  className={cn(
-                    "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                    !n.isRead
-                      ? "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {typeLabel(n.type)}
-                    </span>
-                    {!n.isRead && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-                    )}
-                  </div>
-                  <p className="text-sm leading-snug mt-0.5 line-clamp-2">{n.title}</p>
-                  {n.body && (
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                      {n.body}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {timeAgo(n.occurredAt)}
-                  </p>
-                </div>
-
-                {!n.isRead && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 shrink-0 mt-0.5 text-muted-foreground hover:text-foreground"
-                    title="Mark read"
-                    onClick={() => handleMarkRead(n.id)}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+          groups.map((group) => (
+            <div key={group.label}>
+              {/* Date group header */}
+              <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm px-4 py-1.5 border-b">
+                <span className="text-xs font-medium text-muted-foreground">{group.label}</span>
               </div>
-            );
-          })
+              <div className="divide-y">
+                {group.items.map((n) => {
+                  const Icon = typeIcon[n.type] ?? Bell;
+                  return (
+                    <div
+                      key={n.id}
+                      className={cn(
+                        "flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors",
+                        !n.isRead && "bg-blue-50/50 dark:bg-blue-950/20",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                          !n.isRead
+                            ? "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {typeLabel(n.type)}
+                          </span>
+                          {!n.isRead && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-sm leading-snug mt-0.5 line-clamp-2">{n.title}</p>
+                        {n.body && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                            {n.body}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {timeAgo(n.occurredAt)}
+                        </p>
+                      </div>
+
+                      {!n.isRead && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 mt-0.5 text-muted-foreground hover:text-foreground"
+                          title="Mark read"
+                          onClick={() => handleMarkRead(n.id)}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>

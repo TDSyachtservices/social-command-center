@@ -59,6 +59,56 @@ router.get(
   },
 );
 
+// ─── GET /api/notifications/unread ────────────────────────────────────────────
+// Returns unread notifications (newest-first), optionally filtered by platform.
+const unreadQuerySchema = z.object({
+  platform: z.string().optional(),
+  page: z.string().optional(),
+  limit: z.string().optional(),
+});
+
+router.get(
+  "/unread",
+  validateQuery(unreadQuerySchema),
+  async (req: Request, res: Response) => {
+    const q = (
+      req as Request & { validatedQuery: z.infer<typeof unreadQuerySchema> }
+    ).validatedQuery;
+
+    const page = Math.max(1, parseInt(q.page ?? "1", 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(q.limit ?? "50", 10) || 50));
+
+    const where = {
+      isRead: false,
+      ...(q.platform ? { platform: q.platform.toUpperCase() } : {}),
+    };
+
+    const [total, notifications] = await Promise.all([
+      prisma.notification.count({ where }),
+      prisma.notification.findMany({
+        where,
+        orderBy: { occurredAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          platform: true,
+          accountId: true,
+          externalId: true,
+          type: true,
+          title: true,
+          body: true,
+          isRead: true,
+          occurredAt: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    sendSuccess(res, notifications, { total, page, limit });
+  },
+);
+
 // ─── GET /api/notifications/unread-count ──────────────────────────────────────
 router.get("/unread-count", async (req: Request, res: Response) => {
   const platform = req.query.platform as string | undefined;
@@ -72,8 +122,9 @@ router.get("/unread-count", async (req: Request, res: Response) => {
   sendSuccess(res, { count });
 });
 
-// ─── PATCH /api/notifications/:id/read ────────────────────────────────────────
-router.patch("/:id/read", async (req: Request<{ id: string }>, res: Response) => {
+// ─── POST /api/notifications/:id/read  (canonical) ────────────────────────────
+// PATCH /api/notifications/:id/read   (backward-compatible alias)
+async function markRead(req: Request<{ id: string }>, res: Response) {
   const { id } = req.params;
   const existing = await prisma.notification.findUnique({ where: { id } });
   if (!existing) throw notFound("Notification", id);
@@ -83,7 +134,10 @@ router.patch("/:id/read", async (req: Request<{ id: string }>, res: Response) =>
     data: { isRead: true },
   });
   sendSuccess(res, updated);
-});
+}
+
+router.post("/:id/read", markRead);
+router.patch("/:id/read", markRead);
 
 // ─── POST /api/notifications/read-all ─────────────────────────────────────────
 router.post("/read-all", async (req: Request, res: Response) => {
