@@ -15,8 +15,8 @@ import {
   BarChart2, Info, CheckCircle2, XCircle, RefreshCw,
 } from "lucide-react";
 import {
-  listAccounts, listPosts, getFacebookInsights,
-  type ApiAccount, type ApiPost, type ApiFacebookInsights,
+  listAccounts, listPosts, getFacebookInsights, getInstagramInsights,
+  type ApiAccount, type ApiPost, type ApiFacebookInsights, type ApiInstagramInsights,
 } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 
@@ -99,6 +99,9 @@ export default function KPI() {
   const [insights, setInsights] = useState<Record<string, ApiFacebookInsights>>({});
   const [insightsLoading, setInsightsLoading] = useState<Record<string, boolean>>({});
   const [insightsError, setInsightsError] = useState<Record<string, string>>({});
+  const [igInsights, setIgInsights] = useState<Record<string, ApiInstagramInsights>>({});
+  const [igInsightsLoading, setIgInsightsLoading] = useState<Record<string, boolean>>({});
+  const [igInsightsError, setIgInsightsError] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -106,11 +109,13 @@ export default function KPI() {
       const connectedFb = (accs ?? []).filter(
         a => a.platform === "FACEBOOK" && a.connectionStatus === "connected",
       );
+      const connectedIg = (accs ?? []).filter(
+        a => a.platform === "INSTAGRAM" && a.connectionStatus === "connected",
+      );
       if (accs) setAccounts(accs);
       if (ps) setPosts(ps);
       setLoading(false);
 
-      // Fetch insights for each connected Facebook account
       connectedFb.forEach(acc => {
         setInsightsLoading(prev => ({ ...prev, [acc.id]: true }));
         getFacebookInsights(acc.id).then(result => {
@@ -118,14 +123,26 @@ export default function KPI() {
             setInsights(prev => ({ ...prev, [acc.id]: result.data }));
             setInsightsError(prev => { const n = { ...prev }; delete n[acc.id]; return n; });
           } else {
-            const status = result && "status" in result ? result.status : undefined;
-            const msg = status === 404
-              ? "Insights endpoint not deployed yet — redeploy Railway to activate"
-              : "Could not load insights — token may need read_insights scope (reconnect the account)";
+            const msg = (result && "error" in result && result.error) || "Could not load Facebook insights";
             setInsightsError(prev => ({ ...prev, [acc.id]: msg }));
           }
         }).finally(() => {
           setInsightsLoading(prev => { const n = { ...prev }; delete n[acc.id]; return n; });
+        });
+      });
+
+      connectedIg.forEach(acc => {
+        setIgInsightsLoading(prev => ({ ...prev, [acc.id]: true }));
+        getInstagramInsights(acc.id).then(result => {
+          if (result && "data" in result) {
+            setIgInsights(prev => ({ ...prev, [acc.id]: result.data }));
+            setIgInsightsError(prev => { const n = { ...prev }; delete n[acc.id]; return n; });
+          } else {
+            const msg = (result && "error" in result && result.error) || "Could not load Instagram insights";
+            setIgInsightsError(prev => ({ ...prev, [acc.id]: msg }));
+          }
+        }).finally(() => {
+          setIgInsightsLoading(prev => { const n = { ...prev }; delete n[acc.id]; return n; });
         });
       });
     });
@@ -139,10 +156,7 @@ export default function KPI() {
         setInsights(prev => ({ ...prev, [accountId]: result.data }));
         setInsightsError(prev => { const n = { ...prev }; delete n[accountId]; return n; });
       } else {
-        const status = result && "status" in result ? result.status : undefined;
-        const msg = status === 404
-          ? "Insights endpoint not deployed yet — redeploy Railway to activate"
-          : "Could not load insights — token may need read_insights scope (reconnect the account)";
+        const msg = (result && "error" in result && result.error) || "Could not load Facebook insights";
         setInsightsError(prev => ({ ...prev, [accountId]: msg }));
       }
     }).finally(() => {
@@ -150,8 +164,25 @@ export default function KPI() {
     });
   };
 
+  const refreshIgInsights = (accountId: string) => {
+    setIgInsightsLoading(prev => ({ ...prev, [accountId]: true }));
+    setIgInsightsError(prev => { const n = { ...prev }; delete n[accountId]; return n; });
+    getInstagramInsights(accountId).then(result => {
+      if (result && "data" in result) {
+        setIgInsights(prev => ({ ...prev, [accountId]: result.data }));
+        setIgInsightsError(prev => { const n = { ...prev }; delete n[accountId]; return n; });
+      } else {
+        const msg = (result && "error" in result && result.error) || "Could not load Instagram insights";
+        setIgInsightsError(prev => ({ ...prev, [accountId]: msg }));
+      }
+    }).finally(() => {
+      setIgInsightsLoading(prev => { const n = { ...prev }; delete n[accountId]; return n; });
+    });
+  };
+
   const connectedAccounts = accounts.filter(a => a.connectionStatus === "connected");
   const connectedFbAccounts = connectedAccounts.filter(a => a.platform === "FACEBOOK");
+  const connectedIgAccounts = connectedAccounts.filter(a => a.platform === "INSTAGRAM");
   const connectedPlatforms = [...new Set(connectedAccounts.map(a => a.platform.toLowerCase()))];
 
   const publishedPosts = posts.filter(p => p.status.toLowerCase() === "published");
@@ -159,16 +190,26 @@ export default function KPI() {
   const draftPosts     = posts.filter(p => p.status.toLowerCase() === "draft");
   const failedPosts    = posts.filter(p => p.status.toLowerCase() === "failed");
 
-  // Aggregate across all Facebook accounts that have insights
-  const allInsights = Object.values(insights);
-  const totalFollowers     = allInsights.reduce((s, i) => s + i.followers, 0);
-  const totalGrowth        = allInsights.reduce((s, i) => s + i.followerGrowth30d, 0);
-  const totalReach         = allInsights.reduce((s, i) => s + i.reach30d, 0);
-  const totalImpressions   = allInsights.reduce((s, i) => s + i.impressions30d, 0);
-  const totalEngaged       = allInsights.reduce((s, i) => s + i.engagedUsers30d, 0);
-  const avgEngRate         = totalReach > 0 ? Math.round((totalEngaged / totalReach) * 1000) / 10 : 0;
-  const hasFbInsights      = allInsights.length > 0;
-  const fbInsightsLoading  = Object.keys(insightsLoading).length > 0;
+  // Facebook aggregates
+  const allFbInsights    = Object.values(insights);
+  const totalFollowers   = allFbInsights.reduce((s, i) => s + i.followers, 0);
+  const totalGrowth      = allFbInsights.reduce((s, i) => s + i.followerGrowth30d, 0);
+  const totalReach       = allFbInsights.reduce((s, i) => s + i.reach30d, 0);
+  const totalImpressions = allFbInsights.reduce((s, i) => s + i.impressions30d, 0);
+  const totalEngaged     = allFbInsights.reduce((s, i) => s + i.engagedUsers30d, 0);
+  const avgEngRate       = totalReach > 0 ? Math.round((totalEngaged / totalReach) * 1000) / 10 : 0;
+  const hasFbInsights    = allFbInsights.length > 0;
+  const fbInsightsLoading = Object.keys(insightsLoading).length > 0;
+
+  // Instagram aggregates
+  const allIgInsights      = Object.values(igInsights);
+  const igTotalFollowers   = allIgInsights.reduce((s, i) => s + i.followers, 0);
+  const igTotalGrowth      = allIgInsights.reduce((s, i) => s + i.followerGrowth30d, 0);
+  const igTotalReach       = allIgInsights.reduce((s, i) => s + i.reach30d, 0);
+  const igTotalImpressions = allIgInsights.reduce((s, i) => s + i.impressions30d, 0);
+  const igTotalProfileViews = allIgInsights.reduce((s, i) => s + i.profileViews30d, 0);
+  const hasIgInsights      = allIgInsights.length > 0;
+  const igInsightsLoadingAny = Object.keys(igInsightsLoading).length > 0;
 
   const postsByPlatform = connectedPlatforms.map(platform => ({
     platform,
@@ -183,11 +224,18 @@ export default function KPI() {
           <h1 className="text-2xl font-bold tracking-tight">KPI Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">Social media performance metrics</p>
         </div>
-        {hasFbInsights && (
-          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1">
-            <CheckCircle2 className="h-3 w-3" /> Facebook Insights connected
-          </Badge>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          {hasFbInsights && (
+            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Facebook Insights live
+            </Badge>
+          )}
+          {hasIgInsights && (
+            <Badge className="bg-pink-100 text-pink-800 border-pink-200 gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Instagram Insights live
+            </Badge>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="overview">
@@ -262,17 +310,64 @@ export default function KPI() {
             </div>
           </div>
 
-          {/* Reach trend chart */}
-          {hasFbInsights && allInsights[0]?.dailyReach.length > 0 && (
+          {/* Instagram Insights — real if connected */}
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+              <PlatformBadge platform="instagram" showText={false} />
+              Instagram Account Insights (30 days)
+            </h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {igInsightsLoadingAny ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}><CardContent className="p-4"><Skeleton className="h-4 w-24 mb-2" /><Skeleton className="h-7 w-16" /></CardContent></Card>
+                ))
+              ) : hasIgInsights ? (
+                <>
+                  <StatCard label="Followers" value={fmtFull(igTotalFollowers)} sub="Current followers" colorClass="text-pink-700" />
+                  <StatCard label="Growth (30d)" value={pct(igTotalGrowth)} sub="Net new followers" colorClass={igTotalGrowth >= 0 ? "text-emerald-700" : "text-rose-700"} />
+                  <StatCard label="Reach (30d)" value={fmt(igTotalReach)} sub="Unique accounts reached" colorClass="text-sky-700" />
+                  <StatCard label="Impressions (30d)" value={fmt(igTotalImpressions)} sub="Total content views" colorClass="text-violet-700" />
+                  <StatCard label="Profile Views (30d)" value={fmt(igTotalProfileViews)} sub="Profile page visits" colorClass="text-orange-700" />
+                  <StatCard label="IG Accounts" value={connectedIgAccounts.length} sub="Connected" colorClass="text-pink-700" />
+                </>
+              ) : connectedIgAccounts.length === 0 ? (
+                <div className="col-span-4">
+                  <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                    <Info className="h-4 w-4 text-amber-600 shrink-0" />
+                    <AlertDescription className="text-xs">
+                      No Instagram account is connected. <Link href="/connected-accounts" className="underline font-medium">Connect Instagram</Link> to see Account Insights.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : (
+                Object.entries(igInsightsError).map(([id, err]) => (
+                  <div key={id} className="col-span-4">
+                    <Alert className="border-rose-200 bg-rose-50 text-rose-900">
+                      <Info className="h-4 w-4 text-rose-600 shrink-0" />
+                      <AlertDescription className="text-xs flex items-center justify-between gap-2">
+                        <span>{err}</span>
+                        <Button size="sm" variant="outline" className="h-6 text-xs shrink-0 border-rose-300" onClick={() => refreshIgInsights(id)}>
+                          <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Facebook Reach trend chart */}
+          {hasFbInsights && allFbInsights[0]?.dailyReach.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Facebook Reach — Last 30 Days</CardTitle>
                 <CardDescription>Unique accounts reached per day</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={200}>
                   <AreaChart
-                    data={allInsights[0].dailyReach.map(d => ({ date: d.date.slice(5), value: d.value }))}
+                    data={allFbInsights[0].dailyReach.map(d => ({ date: d.date.slice(5), value: d.value }))}
                     margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
                   >
                     <defs>
@@ -286,6 +381,36 @@ export default function KPI() {
                     <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${v/1000}k` : v} />
                     <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [fmtFull(v), "Reach"]} />
                     <Area type="monotone" dataKey="value" stroke="#7C6FD0" strokeWidth={2.5} fill="url(#fbReachGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Instagram Reach trend chart */}
+          {hasIgInsights && allIgInsights[0]?.dailyReach.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Instagram Reach — Last 30 Days</CardTitle>
+                <CardDescription>Unique accounts reached per day</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart
+                    data={allIgInsights[0].dailyReach.map(d => ({ date: d.date.slice(5), value: d.value }))}
+                    margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="igReachGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#E0607A" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#E0607A" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval={4} />
+                    <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${v/1000}k` : v} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [fmtFull(v), "Reach"]} />
+                    <Area type="monotone" dataKey="value" stroke="#E0607A" strokeWidth={2.5} fill="url(#igReachGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -422,6 +547,91 @@ export default function KPI() {
                 );
               }
 
+              // Instagram: show real insights per account
+              if (platform === "instagram") {
+                return (
+                  <div key={platform} className="space-y-3">
+                    {platformAccounts.map(acc => {
+                      const ins = igInsights[acc.id];
+                      const isLoading = !!igInsightsLoading[acc.id];
+                      const err = igInsightsError[acc.id];
+                      const weeklyReach = ins ? toWeekly(ins.dailyReach) : [];
+
+                      return (
+                        <Card key={acc.id} className="overflow-hidden">
+                          <CardHeader className="pb-3" style={{ borderLeft: `4px solid ${color}` }}>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <PlatformBadge platform="instagram" showText={false} />
+                                <CardTitle className="text-base">{acc.accountName}</CardTitle>
+                                <Badge variant="secondary" className="text-xs">Instagram Account</Badge>
+                              </div>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => refreshIgInsights(acc.id)} disabled={isLoading}>
+                                <RefreshCw className={`h-3 w-3 mr-1 ${isLoading ? "animate-spin" : ""}`} />
+                                Refresh
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            {err && (
+                              <Alert className="border-rose-200 bg-rose-50 text-rose-900 mb-4">
+                                <Info className="h-4 w-4 text-rose-600 shrink-0" />
+                                <AlertDescription className="text-xs">{err}</AlertDescription>
+                              </Alert>
+                            )}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                              {[
+                                { label: "Followers",       value: isLoading ? null : ins ? fmtFull(ins.followers) : "—" },
+                                { label: "Growth (30d)",    value: isLoading ? null : ins ? pct(ins.followerGrowth30d) : "—" },
+                                { label: "Reach (30d)",     value: isLoading ? null : ins ? fmt(ins.reach30d) : "—" },
+                                { label: "Impressions",     value: isLoading ? null : ins ? fmt(ins.impressions30d) : "—" },
+                                { label: "Profile Views",   value: isLoading ? null : ins ? fmt(ins.profileViews30d) : "—" },
+                                { label: "Published",       value: platformPublished, accent: color },
+                              ].map(m => (
+                                <Card key={m.label}>
+                                  <CardContent className="p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{m.label}</p>
+                                    {m.value === null
+                                      ? <Skeleton className="h-6 w-12 mt-1" />
+                                      : <p className="text-lg font-bold mt-1 leading-tight" style={m.accent ? { color: m.accent } : {}}>{m.value}</p>
+                                    }
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+
+                            {weeklyReach.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-2">Weekly Reach Trend</p>
+                                <ResponsiveContainer width="100%" height={160}>
+                                  <AreaChart data={weeklyReach} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                                    <defs>
+                                      <linearGradient id={`ig-grad-${acc.id}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={color} stopOpacity={0.2} />
+                                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                                      </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                                    <XAxis dataKey="week" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                                    <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${v/1000}k` : v} />
+                                    <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [fmtFull(v), "Reach"]} />
+                                    <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#ig-grad-${acc.id})`} />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )}
+
+                            {platformScheduled > 0 && (
+                              <p className="text-xs text-muted-foreground mt-3">{platformScheduled} post{platformScheduled !== 1 ? "s" : ""} scheduled</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
               // Other platforms — show unavailability note
               return (
                 <Card key={platform} className="overflow-hidden">
@@ -527,7 +737,9 @@ export default function KPI() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {accounts.map(account => {
                 const isConnected = account.connectionStatus === "connected";
-                const ins = insights[account.id];
+                const fbIns = insights[account.id];
+                const igIns = igInsights[account.id];
+                const insightData = fbIns ?? igIns;
                 return (
                   <Card key={account.id}>
                     <CardContent className="p-4">
@@ -543,15 +755,15 @@ export default function KPI() {
                           ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                           : <XCircle className="h-4 w-4 text-rose-400 shrink-0" />}
                       </div>
-                      {ins && (
+                      {insightData && (
                         <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <p className="text-muted-foreground">Followers</p>
-                            <p className="font-semibold mt-0.5">{fmtFull(ins.followers)}</p>
+                            <p className="font-semibold mt-0.5">{fmtFull(insightData.followers)}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Reach (30d)</p>
-                            <p className="font-semibold mt-0.5">{fmt(ins.reach30d)}</p>
+                            <p className="font-semibold mt-0.5">{fmt(insightData.reach30d)}</p>
                           </div>
                         </div>
                       )}
