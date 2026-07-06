@@ -116,6 +116,12 @@ export async function cropToSpec(
   const H = spec.height;
   const tmpPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
 
+  // Select only the first frame ([0]) of the input. Animated GIFs (and other
+  // multi-frame formats) otherwise produce one output PER FRAME — ImageMagick
+  // writes tmpPath-0, tmpPath-1, ... and the statSync(tmpPath) below throws,
+  // failing the whole asset. Harmless for single-frame JPEG/PNG/WebP.
+  const framedInput = `${inputPath}[0]`;
+
   let args: string[];
   if (srcWidth > 0 && srcHeight > 0) {
     // Resize to cover the target, then crop WxH at a focal-point offset.
@@ -129,7 +135,7 @@ export async function cropToSpec(
     const offX = clamp(Math.round(focal.x * resizedW - W / 2), 0, resizedW - W);
     const offY = clamp(Math.round(focal.y * resizedH - H / 2), 0, resizedH - H);
     args = [
-      inputPath,
+      framedInput,
       "-auto-orient",                        // apply EXIF rotation before any crop
       "-resize", `${resizedW}x${resizedH}!`,
       "-crop", `${W}x${H}+${offX}+${offY}`,
@@ -141,7 +147,7 @@ export async function cropToSpec(
   } else {
     // Unknown source size: let ImageMagick cover-crop from the centre.
     args = [
-      inputPath,
+      framedInput,
       "-auto-orient",          // apply EXIF rotation before resize
       "-resize", `${W}x${H}^`,
       "-gravity", "center",
