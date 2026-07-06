@@ -475,11 +475,11 @@ export interface IgInsights {
  * Fetch Instagram Business Account Insights for the past 30 days.
  * Requires the token to have `instagram_manage_insights` permission.
  *
- * Metrics fetched:
- *   - reach            — unique accounts that saw any content
- *   - impressions      — total times content was displayed
- *   - profile_views    — profile page visits
- *   - follower_count   — daily net follower change (sum = 30-day growth)
+ * Metrics fetched (v19.0 valid names):
+ *   - reach              — unique accounts that saw any content
+ *   - total_interactions — likes + comments + shares + saves (replaces deprecated `impressions`)
+ *   - profile_views      — profile page visits
+ *   - follower_count     — daily net follower change (sum = 30-day growth)
  */
 export async function getIgInsights(opts: {
   accessToken: string;
@@ -488,7 +488,8 @@ export async function getIgInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  const metrics = ["reach", "impressions", "profile_views", "follower_count"].join(",");
+  // `impressions` removed in v19.0 — `total_interactions` is the valid replacement
+  const metrics = ["reach", "total_interactions", "profile_views", "follower_count"].join(",");
 
   const [profileRes, insightsRes] = await Promise.all([
     fetch(
@@ -532,7 +533,7 @@ export async function getIgInsights(opts: {
   const sum = (pts: IgDailyDataPoint[]) => pts.reduce((acc, p) => acc + p.value, 0);
 
   const dailyReach = daily("reach");
-  const dailyImpressions = daily("impressions");
+  const dailyImpressions = daily("total_interactions"); // was `impressions` pre-v19
   const dailyProfileViews = daily("profile_views");
   const dailyFollowerCount = daily("follower_count");
 

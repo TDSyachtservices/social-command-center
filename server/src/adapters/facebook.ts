@@ -627,11 +627,11 @@ export async function getPageInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
+  // page_fans_adds and page_impressions_unique were deprecated in Graph API v17+.
+  // page_impressions + page_post_engagements are the reliable v19 replacements.
   const dailyMetrics = [
-    "page_fans_adds",
-    "page_impressions_unique",
     "page_impressions",
-    "page_engaged_users",
+    "page_post_engagements",
   ];
 
   const [pageRes, dailyRes] = await Promise.all([
@@ -689,16 +689,17 @@ export async function getPageInsights(opts: {
 
   const sum = (pts: DailyDataPoint[]) => pts.reduce((acc, p) => acc + p.value, 0);
 
-  const dailyFansAdds = daily("page_fans_adds");
-  const dailyReach = daily("page_impressions_unique");
+  // page_fans_adds / page_impressions_unique deprecated; use page_impressions as both reach
+  // proxy and impressions, page_post_engagements as engaged users.
   const dailyImpressions = daily("page_impressions");
-  const dailyEngaged = daily("page_engaged_users");
+  const dailyEngaged = daily("page_post_engagements");
 
-  const followerGrowth30d = sum(dailyFansAdds);
-  const reach30d = sum(dailyReach);
+  const followerGrowth30d = 0; // no daily fan-adds metric in v19+; fan_count snapshot used instead
+  const reach30d = sum(dailyImpressions);       // best available proxy for reach in v19
   const impressions30d = sum(dailyImpressions);
   const engagedUsers30d = sum(dailyEngaged);
-  const engagementRate = reach30d > 0 ? Math.round((engagedUsers30d / reach30d) * 1000) / 10 : 0;
+  const engagementRate = impressions30d > 0 ? Math.round((engagedUsers30d / impressions30d) * 1000) / 10 : 0;
+  const dailyReach = dailyImpressions; // same data, kept for chart compatibility
 
   return {
     followers,
