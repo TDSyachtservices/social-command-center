@@ -9,6 +9,10 @@ import {
   getGrantedPermissions,
   getInstagramAccountForPage,
 } from "../adapters/facebook.js";
+import {
+  getLinkedInProfile,
+  getAdminOrganizations,
+} from "../adapters/linkedin.js";
 
 const router = Router();
 
@@ -233,6 +237,182 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error(err, "Facebook OAuth callback error");
     res.redirect(`${frontendUrl}/connected-accounts?error=facebook_failed`);
+  }
+});
+
+// ─── LinkedIn OAuth ────────────────────────────────────────────────────────────
+
+const LI_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "w_member_social",
+  "r_organization_social",
+  "w_organization_social",
+  "rw_organization_admin",
+].join(" ");
+
+function getLiRedirectUri(): string {
+  const base = (process.env.API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+  return `${base}/api/auth/linkedin/callback`;
+}
+
+// GET /api/auth/linkedin — redirect to LinkedIn consent screen
+router.get("/linkedin", (_req: Request, res: Response) => {
+  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  if (!clientId) {
+    res.status(500).send(
+      "<h2>Configuration error</h2><p>LINKEDIN_CLIENT_ID is not set. " +
+      "Add it to your Railway environment variables and redeploy.</p>",
+    );
+    return;
+  }
+  const url = new URL("https://www.linkedin.com/oauth/v2/authorization");
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", getLiRedirectUri());
+  url.searchParams.set("scope", LI_SCOPES);
+  url.searchParams.set("state", `li_${Date.now()}`);
+  logger.info({ redirectUri: getLiRedirectUri() }, "Redirecting to LinkedIn OAuth");
+  res.redirect(url.toString());
+});
+
+// GET /api/auth/linkedin/callback — exchange code, upsert org pages
+router.get("/linkedin/callback", async (req: Request, res: Response) => {
+  const frontendUrl = getFrontendUrl();
+  const { code, error, error_description } = req.query as {
+    code?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (error || !code) {
+    logger.warn({ error, error_description }, "LinkedIn OAuth denied");
+    res.redirect(`${frontendUrl}/connected-accounts?error=linkedin_denied`);
+    return;
+  }
+
+  try {
+    const clientId = process.env.LINKEDIN_CLIENT_ID!;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET!;
+    const redirectUri = getLiRedirectUri();
+
+    // Step 1: exchange authorization code for access token
+    const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text().catch(() => tokenRes.statusText);
+      logger.error({ status: tokenRes.status, body: text }, "LinkedIn token exchange failed");
+      res.redirect(`${frontendUrl}/connected-accounts?error=linkedin_failed`);
+      return;
+    }
+
+    const tokenData = (await tokenRes.json()) as {
+      access_token: string;
+      expires_in?: number;
+      scope?: string;
+    };
+
+    const accessToken = tokenData.access_token;
+    const expiresIn = tokenData.expires_in ?? 5184000; // 60 days default
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    const encryptedToken = encrypt(accessToken);
+    const grantedScopes = (tokenData.scope ?? "").split(" ").filter(Boolean);
+
+    // Step 2: get the authenticated member's profile
+    const profile = await getLinkedInProfile(accessToken);
+    logger.info({ memberId: profile.id, name: profile.name }, "LinkedIn member identified");
+
+    // Step 3: try to get admin company pages (requires org scopes)
+    const orgs = await getAdminOrganizations(accessToken);
+    logger.info({ orgCount: orgs.length }, "LinkedIn org pages found");
+
+    const canPost = grantedScopes.includes("w_organization_social") || grantedScopes.includes("w_member_social");
+    const canReadComments = grantedScopes.includes("r_organization_social");
+
+    let connectedCount = 0;
+
+    if (orgs.length > 0) {
+      // Connect each company page as a separate SocialAccount
+      for (const org of orgs) {
+        const existing = await prisma.socialAccount.findFirst({
+          where: { platform: "LINKEDIN", accountId: org.id },
+        });
+
+        const accountData = {
+          accountName: org.name,
+          connectionStatus: "connected",
+          tokenEncrypted: encryptedToken,
+          tokenExpiresAt: expiresAt,
+          postingCapability: canPost,
+          commentReadCapability: canReadComments,
+          commentReplyCapability: false,
+          moderationCapability: false,
+          lastSync: new Date(),
+          scopes: grantedScopes,
+          metadata: { orgUrn: org.urn, memberId: profile.id, memberName: profile.name },
+        };
+
+        if (existing) {
+          await prisma.socialAccount.update({ where: { id: existing.id }, data: accountData });
+          logger.info({ orgId: org.id, name: org.name }, "LinkedIn org page refreshed");
+        } else {
+          await prisma.socialAccount.create({
+            data: { platform: "LINKEDIN", accountId: org.id, ...accountData },
+          });
+          logger.info({ orgId: org.id, name: org.name }, "LinkedIn org page connected");
+        }
+        connectedCount++;
+      }
+    } else {
+      // No org pages — connect the personal member account instead
+      const existing = await prisma.socialAccount.findFirst({
+        where: { platform: "LINKEDIN", accountId: profile.id },
+      });
+
+      const accountData = {
+        accountName: profile.name,
+        connectionStatus: "connected",
+        tokenEncrypted: encryptedToken,
+        tokenExpiresAt: expiresAt,
+        postingCapability: grantedScopes.includes("w_member_social"),
+        commentReadCapability: false,
+        commentReplyCapability: false,
+        moderationCapability: false,
+        lastSync: new Date(),
+        scopes: grantedScopes,
+        metadata: { memberId: profile.id, email: profile.email ?? null, personalAccount: true },
+      };
+
+      if (existing) {
+        await prisma.socialAccount.update({ where: { id: existing.id }, data: accountData });
+        logger.info({ memberId: profile.id }, "LinkedIn personal account refreshed");
+      } else {
+        await prisma.socialAccount.create({
+          data: { platform: "LINKEDIN", accountId: profile.id, ...accountData },
+        });
+        logger.info({ memberId: profile.id }, "LinkedIn personal account connected");
+      }
+      connectedCount++;
+    }
+
+    res.redirect(
+      `${frontendUrl}/connected-accounts?connected=linkedin&accounts=${connectedCount}&orgs=${orgs.length}`,
+    );
+  } catch (err) {
+    logger.error(err, "LinkedIn OAuth callback error");
+    res.redirect(`${frontendUrl}/connected-accounts?error=linkedin_failed`);
   }
 });
 

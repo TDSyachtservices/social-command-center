@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, AlertCircle, CheckCircle2, Facebook, Instagram, ExternalLink } from "lucide-react";
+import { Check, X, AlertCircle, CheckCircle2, Facebook, Instagram, Linkedin, ExternalLink } from "lucide-react";
 
 type DisplayAccount = {
   id: string;
@@ -47,9 +47,17 @@ function getCallbackBanner(): { type: "success" | "error"; message: string } | n
       message: `Connected! ${pages ? `${pages} Facebook page(s)` : "Facebook pages"}${igPart} added.`,
     };
   }
+  if (connected === "linkedin") {
+    const accounts = p.get("accounts") ?? "1";
+    const orgs = p.get("orgs") ?? "0";
+    const detail = orgs !== "0" ? `${accounts} company page(s) connected.` : "Personal account connected.";
+    return { type: "success", message: `LinkedIn connected! ${detail}` };
+  }
   if (error === "facebook_denied") return { type: "error", message: "Connection was cancelled." };
   if (error === "no_pages") return { type: "error", message: "No Facebook Pages found. Make sure you manage at least one Page and granted all permissions." };
   if (error === "facebook_failed") return { type: "error", message: "Connection failed. Check your server configuration and try again." };
+  if (error === "linkedin_denied") return { type: "error", message: "LinkedIn connection was cancelled." };
+  if (error === "linkedin_failed") return { type: "error", message: "LinkedIn connection failed. Check LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET in Railway and try again." };
   return null;
 }
 
@@ -108,6 +116,14 @@ export default function ConnectedAccounts() {
     window.location.href = `${API_BASE}/api/auth/instagram`;
   };
 
+  const connectLinkedIn = () => {
+    if (!API_BASE) {
+      alert("VITE_API_BASE_URL is not set. Point it at your Railway backend URL and rebuild.");
+      return;
+    }
+    window.location.href = `${API_BASE}/api/auth/linkedin`;
+  };
+
   const handleDisconnectConfirm = async () => {
     if (!disconnectingId) return;
     setIsDisconnecting(true);
@@ -134,6 +150,7 @@ export default function ConnectedAccounts() {
   const getReconnectHandler = (platform: string) => {
     if (platform === "facebook") return connectFacebook;
     if (platform === "instagram") return connectInstagram;
+    if (platform === "linkedin") return connectLinkedIn;
     return undefined;
   };
 
@@ -162,7 +179,7 @@ export default function ConnectedAccounts() {
           <p className="text-muted-foreground text-sm mt-1">Manage your social media profiles and integrations.</p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button onClick={connectFacebook} className="flex items-center gap-2">
               <Facebook className="w-4 h-4" />
               Connect Facebook
@@ -170,6 +187,10 @@ export default function ConnectedAccounts() {
             <Button onClick={connectInstagram} variant="outline" className="flex items-center gap-2">
               <Instagram className="w-4 h-4" />
               Connect Instagram
+            </Button>
+            <Button onClick={connectLinkedIn} variant="outline" className="flex items-center gap-2" style={{ borderColor: "#0A66C2", color: "#0A66C2" }}>
+              <Linkedin className="w-4 h-4" />
+              Connect LinkedIn
             </Button>
           </div>
           {!apiConfigured && (
@@ -193,7 +214,7 @@ export default function ConnectedAccounts() {
               <p>To connect real accounts:</p>
               <ol className="list-decimal ml-4 space-y-1 text-amber-700">
                 <li>Deploy <code className="bg-amber-100 px-1 rounded font-mono">/server</code> to Railway and provision a PostgreSQL database</li>
-                <li>Set <code className="bg-amber-100 px-1 rounded font-mono">META_CLIENT_ID</code> + <code className="bg-amber-100 px-1 rounded font-mono">META_CLIENT_SECRET</code> in Railway env vars</li>
+                <li>Set <code className="bg-amber-100 px-1 rounded font-mono">META_CLIENT_ID</code>, <code className="bg-amber-100 px-1 rounded font-mono">META_CLIENT_SECRET</code>, <code className="bg-amber-100 px-1 rounded font-mono">LINKEDIN_CLIENT_ID</code>, <code className="bg-amber-100 px-1 rounded font-mono">LINKEDIN_CLIENT_SECRET</code> in Railway env vars</li>
                 <li>Set <code className="bg-amber-100 px-1 rounded font-mono">VITE_API_BASE_URL</code> to your Railway URL here in Replit and redeploy this frontend</li>
               </ol>
               <a
