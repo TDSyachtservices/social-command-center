@@ -73,8 +73,6 @@ export const IMAGE_PLATFORM_SPECS: PlatformSpec[] = [
   { platform: "INSTAGRAM", placement: "story",          width: 1080, height: 1920, aspectRatio: "9:16",   format: "jpeg", mimeType: "image/jpeg" },
   { platform: "LINKEDIN",  placement: "feed_landscape", width: 1200, height: 627,  aspectRatio: "1.91:1", format: "jpeg", mimeType: "image/jpeg" },
   { platform: "LINKEDIN",  placement: "feed_portrait",  width: 1080, height: 1350, aspectRatio: "4:5",    format: "jpeg", mimeType: "image/jpeg" },
-  { platform: "TIKTOK",    placement: "feed_vertical",  width: 1080, height: 1920, aspectRatio: "9:16",   format: "jpeg", mimeType: "image/jpeg" },
-  { platform: "WEBSITE",   placement: "og_image",       width: 1200, height: 628,  aspectRatio: "1.91:1", format: "jpeg", mimeType: "image/jpeg" },
 ];
 
 export interface ProcessedVersion {

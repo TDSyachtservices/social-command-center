@@ -8,7 +8,7 @@ import { notFound } from "../utils/errors.js";
 const router = Router();
 
 const createAccountSchema = z.object({
-  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]),
   accountName: z.string().min(1).max(200),
   accountId: z.string().min(1).max(200),
   connectionStatus: z

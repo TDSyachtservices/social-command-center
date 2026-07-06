@@ -20,7 +20,7 @@ const listQuerySchema = z.object({
 });
 
 // ─── Body schemas ─────────────────────────────────────────────────────────────
-const platformEnum = z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]);
+const platformEnum = z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]);
 
 // Per-platform overrides. Each selected platform may carry its own photo/video
 // and/or caption; rows with no override fall back to the post-level values at publish.
