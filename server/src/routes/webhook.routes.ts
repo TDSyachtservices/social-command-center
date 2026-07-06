@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { Platform } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
 import { parseChange, parseMessagingEvent, MetaMessagingEvent } from "../webhooks/meta-parser.js";
@@ -13,7 +14,7 @@ router.get("/", (req: Request, res: Response) => {
 
   const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
 
-  if (mode === "subscribe" && token === verifyToken && challenge) {
+  if (mode === "subscribe" && verifyToken && token === verifyToken && challenge) {
     logger.info("Meta webhook verification succeeded");
     res.status(200).send(challenge);
     return;
@@ -78,13 +79,13 @@ interface MetaWebhookBody {
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 async function persistNotification(
-  platform: string,
+  platform: Platform,
   entryId: string,
   input: { type: string; title: string; externalId: string | null; body?: string; occurredAt: Date },
   payload: Record<string, unknown>,
 ): Promise<void> {
   const account = await prisma.socialAccount.findFirst({
-    where: { accountId: entryId, connectionStatus: "connected" },
+    where: { accountId: entryId, platform, connectionStatus: "connected" },
   });
   const accountId = account?.id ?? null;
 

@@ -101,7 +101,7 @@ async function followerPollTick(): Promise<void> {
         // Any API error is treated as a no-op: skip snapshot + notification
         // so a transient failure never generates a false follower-change alert.
         const field = account.platform === "FACEBOOK" ? "fan_count" : "followers_count";
-        const url = new URL(`https://graph.facebook.com/v19.0/${account.accountId}`);
+        const url = new URL(`https://graph.facebook.com/v21.0/${account.accountId}`);
         url.searchParams.set("fields", field);
         url.searchParams.set("access_token", accessToken);
         const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
