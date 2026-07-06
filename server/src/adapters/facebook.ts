@@ -634,9 +634,10 @@ export async function getPageInsights(opts: {
     "page_engaged_users",
   ];
 
-  const [fansRes, dailyRes] = await Promise.all([
+  const [pageRes, dailyRes] = await Promise.all([
+    // fan_count from the Page object is more reliable than the deprecated page_fans insights metric
     fetch(
-      `${GRAPH}/${opts.pageId}/insights/page_fans?period=lifetime&access_token=${opts.accessToken}`,
+      `${GRAPH}/${opts.pageId}?fields=fan_count,followers_count&access_token=${opts.accessToken}`,
       { signal: AbortSignal.timeout(15_000) },
     ),
     fetch(
@@ -648,8 +649,9 @@ export async function getPageInsights(opts: {
   type InsightValue = { end_time: string; value: number };
   type InsightEntry = { name: string; values: InsightValue[] };
 
-  const fansData = (await fansRes.json()) as {
-    data?: InsightEntry[];
+  const pageData = (await pageRes.json()) as {
+    fan_count?: number;
+    followers_count?: number;
     error?: { message: string; code: number };
   };
   const dailyData = (await dailyRes.json()) as {
@@ -657,15 +659,27 @@ export async function getPageInsights(opts: {
     error?: { message: string; code: number };
   };
 
-  if (fansData.error) {
-    logger.warn({ pageId: opts.pageId, error: fansData.error }, "Facebook page_fans insights error");
+  if (pageData.error) {
+    logger.warn({ pageId: opts.pageId, error: pageData.error }, "Facebook page fields error");
+    throw new Error(pageData.error.message);
   }
   if (dailyData.error) {
     logger.warn({ pageId: opts.pageId, error: dailyData.error }, "Facebook daily insights error");
+    throw new Error(
+      dailyData.error.code === 10 || dailyData.error.code === 200
+        ? "The stored token doesn't have read_insights permission — reconnect Facebook to grant it"
+        : dailyData.error.message,
+    );
   }
 
-  const fansEntry = fansData.data?.[0];
-  const followers = fansEntry?.values?.at(-1)?.value ?? 0;
+  // If daily data came back empty, the token is missing read_insights
+  if (!dailyData.data?.length) {
+    throw new Error(
+      "No insights data returned — the token likely lacks read_insights permission. Reconnect Facebook to fix this.",
+    );
+  }
+
+  const followers = pageData.fan_count ?? pageData.followers_count ?? 0;
 
   const daily = (name: string): DailyDataPoint[] =>
     (dailyData.data?.find(d => d.name === name)?.values ?? []).map(v => ({
