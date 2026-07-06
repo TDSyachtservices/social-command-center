@@ -1,6 +1,6 @@
 import { logger } from "../utils/logger.js";
 
-const GRAPH = "https://graph.facebook.com/v19.0";
+const GRAPH = "https://graph.facebook.com/v21.0";
 
 export interface PublishResult {
   success: boolean;
@@ -627,10 +627,11 @@ export async function getPageInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  // page_fans_adds and page_impressions_unique were deprecated in Graph API v17+.
-  // page_impressions + page_post_engagements are the reliable v19 replacements.
+  // v21+ valid metrics (page_impressions_unique and page_engaged_users restored)
   const dailyMetrics = [
+    "page_impressions_unique",
     "page_impressions",
+    "page_engaged_users",
     "page_post_engagements",
   ];
 
@@ -689,17 +690,15 @@ export async function getPageInsights(opts: {
 
   const sum = (pts: DailyDataPoint[]) => pts.reduce((acc, p) => acc + p.value, 0);
 
-  // page_fans_adds / page_impressions_unique deprecated; use page_impressions as both reach
-  // proxy and impressions, page_post_engagements as engaged users.
+  const dailyReach = daily("page_impressions_unique");
   const dailyImpressions = daily("page_impressions");
-  const dailyEngaged = daily("page_post_engagements");
+  const dailyEngaged = daily("page_engaged_users");
 
-  const followerGrowth30d = 0; // no daily fan-adds metric in v19+; fan_count snapshot used instead
-  const reach30d = sum(dailyImpressions);       // best available proxy for reach in v19
+  const followerGrowth30d = 0; // no reliable daily fan-adds metric; fan_count snapshot used instead
+  const reach30d = sum(dailyReach);
   const impressions30d = sum(dailyImpressions);
   const engagedUsers30d = sum(dailyEngaged);
-  const engagementRate = impressions30d > 0 ? Math.round((engagedUsers30d / impressions30d) * 1000) / 10 : 0;
-  const dailyReach = dailyImpressions; // same data, kept for chart compatibility
+  const engagementRate = reach30d > 0 ? Math.round((engagedUsers30d / reach30d) * 1000) / 10 : 0;
 
   return {
     followers,
