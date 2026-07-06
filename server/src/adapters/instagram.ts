@@ -452,3 +452,98 @@ export async function replyToComment(opts: {
   }
   return { success: true, externalPostId: data.id };
 }
+
+// ─── Account Insights ─────────────────────────────────────────────────────────
+
+export interface IgDailyDataPoint {
+  date: string;
+  value: number;
+}
+
+export interface IgInsights {
+  followers: number;
+  followerGrowth30d: number;
+  reach30d: number;
+  impressions30d: number;
+  profileViews30d: number;
+  dailyReach: IgDailyDataPoint[];
+  dailyImpressions: IgDailyDataPoint[];
+  dailyProfileViews: IgDailyDataPoint[];
+}
+
+/**
+ * Fetch Instagram Business Account Insights for the past 30 days.
+ * Requires the token to have `instagram_manage_insights` permission.
+ *
+ * Metrics fetched:
+ *   - reach            — unique accounts that saw any content
+ *   - impressions      — total times content was displayed
+ *   - profile_views    — profile page visits
+ *   - follower_count   — daily net follower change (sum = 30-day growth)
+ */
+export async function getIgInsights(opts: {
+  accessToken: string;
+  igUserId: string;
+}): Promise<IgInsights> {
+  const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+  const until = Math.floor(Date.now() / 1000);
+
+  const metrics = ["reach", "impressions", "profile_views", "follower_count"].join(",");
+
+  const [profileRes, insightsRes] = await Promise.all([
+    fetch(
+      `${GRAPH}/${opts.igUserId}?fields=followers_count&access_token=${opts.accessToken}`,
+      { signal: AbortSignal.timeout(15_000) },
+    ),
+    fetch(
+      `${GRAPH}/${opts.igUserId}/insights?metric=${metrics}&period=day&since=${since}&until=${until}&access_token=${opts.accessToken}`,
+      { signal: AbortSignal.timeout(15_000) },
+    ),
+  ]);
+
+  type InsightValue = { end_time: string; value: number };
+  type InsightEntry = { name: string; values: InsightValue[] };
+
+  const profileData = (await profileRes.json()) as {
+    followers_count?: number;
+    error?: { message: string; code: number };
+  };
+  const insightsData = (await insightsRes.json()) as {
+    data?: InsightEntry[];
+    error?: { message: string; code: number };
+  };
+
+  if (profileData.error) {
+    logger.warn({ igUserId: opts.igUserId, error: profileData.error }, "Instagram profile fetch error");
+  }
+  if (insightsData.error) {
+    logger.warn({ igUserId: opts.igUserId, error: insightsData.error }, "Instagram insights fetch error");
+    throw new Error(insightsData.error.message);
+  }
+
+  const followers = profileData.followers_count ?? 0;
+
+  const daily = (name: string): IgDailyDataPoint[] =>
+    (insightsData.data?.find(d => d.name === name)?.values ?? []).map(v => ({
+      date: v.end_time.slice(0, 10),
+      value: v.value,
+    }));
+
+  const sum = (pts: IgDailyDataPoint[]) => pts.reduce((acc, p) => acc + p.value, 0);
+
+  const dailyReach = daily("reach");
+  const dailyImpressions = daily("impressions");
+  const dailyProfileViews = daily("profile_views");
+  const dailyFollowerCount = daily("follower_count");
+
+  return {
+    followers,
+    followerGrowth30d: sum(dailyFollowerCount),
+    reach30d: sum(dailyReach),
+    impressions30d: sum(dailyImpressions),
+    profileViews30d: sum(dailyProfileViews),
+    dailyReach,
+    dailyImpressions,
+    dailyProfileViews,
+  };
+}
