@@ -620,6 +620,17 @@ export interface PageInsights {
   dailyEngaged: DailyDataPoint[];
 }
 
+// Metrics to try for Facebook Page Insights. Each is fetched individually so a
+// deprecated metric contributes empty data without failing the entire call.
+// Update this list as Meta deprecates metrics — the call is now resilient.
+const FB_INSIGHT_METRICS = [
+  "page_impressions",
+  "page_post_engagements",
+  "page_views_total",
+] as const;
+
+type FbMetric = (typeof FB_INSIGHT_METRICS)[number];
+
 export async function getPageInsights(opts: {
   accessToken: string;
   pageId: string;
@@ -627,62 +638,51 @@ export async function getPageInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  // page_impressions_unique + page_engaged_users deprecated June 2026.
-  // page_impressions (total views) + page_post_engagements are the safest available v21 metrics.
-  const dailyMetrics = [
-    "page_impressions",
-    "page_post_engagements",
-  ];
+  type InsightValue = { end_time: string; value: number };
+  type InsightEntry = { name: string; values: InsightValue[] };
+  type InsightResponse = { data?: InsightEntry[]; error?: { message: string; code: number } };
 
-  const [pageRes, dailyRes] = await Promise.all([
-    // fan_count from the Page object is more reliable than the deprecated page_fans insights metric
+  // Fetch Page object + each metric independently so no single deprecation kills the call
+  const [pageRes, ...metricResponses] = await Promise.all([
     fetch(
       `${GRAPH}/${opts.pageId}?fields=fan_count,followers_count&access_token=${opts.accessToken}`,
       { signal: AbortSignal.timeout(15_000) },
     ),
-    fetch(
-      `${GRAPH}/${opts.pageId}/insights?metric=${dailyMetrics.join(",")}&period=day&since=${since}&until=${until}&access_token=${opts.accessToken}`,
-      { signal: AbortSignal.timeout(15_000) },
+    ...FB_INSIGHT_METRICS.map(metric =>
+      fetch(
+        `${GRAPH}/${opts.pageId}/insights?metric=${metric}&period=day&since=${since}&until=${until}&access_token=${opts.accessToken}`,
+        { signal: AbortSignal.timeout(15_000) },
+      ),
     ),
   ]);
-
-  type InsightValue = { end_time: string; value: number };
-  type InsightEntry = { name: string; values: InsightValue[] };
 
   const pageData = (await pageRes.json()) as {
     fan_count?: number;
     followers_count?: number;
     error?: { message: string; code: number };
   };
-  const dailyData = (await dailyRes.json()) as {
-    data?: InsightEntry[];
-    error?: { message: string; code: number };
-  };
-
   if (pageData.error) {
     logger.warn({ pageId: opts.pageId, error: pageData.error }, "Facebook page fields error");
     throw new Error(pageData.error.message);
   }
-  if (dailyData.error) {
-    logger.warn({ pageId: opts.pageId, error: dailyData.error }, "Facebook daily insights error");
-    throw new Error(
-      dailyData.error.code === 10 || dailyData.error.code === 200
-        ? "The stored token doesn't have read_insights permission — reconnect Facebook to grant it"
-        : dailyData.error.message,
-    );
-  }
 
-  // If daily data came back empty, the token is missing read_insights
-  if (!dailyData.data?.length) {
-    throw new Error(
-      "No insights data returned — the token likely lacks read_insights permission. Reconnect Facebook to fix this.",
-    );
-  }
+  // Parse each metric response independently — log errors but don't throw
+  const metricData = new Map<FbMetric, InsightEntry[]>();
+  await Promise.all(
+    FB_INSIGHT_METRICS.map(async (metric, i) => {
+      const body = (await metricResponses[i].json()) as InsightResponse;
+      if (body.error) {
+        logger.warn({ pageId: opts.pageId, metric, error: body.error }, "Facebook metric unavailable");
+      } else if (body.data?.length) {
+        metricData.set(metric, body.data);
+      }
+    }),
+  );
 
   const followers = pageData.fan_count ?? pageData.followers_count ?? 0;
 
-  const daily = (name: string): DailyDataPoint[] =>
-    (dailyData.data?.find(d => d.name === name)?.values ?? []).map(v => ({
+  const daily = (metric: FbMetric): DailyDataPoint[] =>
+    (metricData.get(metric)?.[0]?.values ?? []).map(v => ({
       date: v.end_time.slice(0, 10),
       value: v.value,
     }));
@@ -691,10 +691,12 @@ export async function getPageInsights(opts: {
 
   const dailyImpressions = daily("page_impressions");
   const dailyEngaged = daily("page_post_engagements");
-  const dailyReach = dailyImpressions;
+  const dailyViews = daily("page_views_total");
+  // Use whichever daily series has data for the reach chart
+  const dailyReach = dailyImpressions.length ? dailyImpressions : dailyViews;
 
   const followerGrowth30d = 0;
-  const impressions30d = sum(dailyImpressions);
+  const impressions30d = sum(dailyImpressions) || sum(dailyViews);
   const reach30d = impressions30d;
   const engagedUsers30d = sum(dailyEngaged);
   const engagementRate = impressions30d > 0 ? Math.round((engagedUsers30d / impressions30d) * 1000) / 10 : 0;
@@ -707,7 +709,7 @@ export async function getPageInsights(opts: {
     engagedUsers30d,
     engagementRate,
     dailyReach,
-    dailyImpressions,
+    dailyImpressions: dailyReach,
     dailyEngaged,
   };
 }
