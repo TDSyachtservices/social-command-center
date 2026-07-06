@@ -104,6 +104,72 @@ app.use("/api/insights", insightsRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/notifications", notificationsRouter);
 
+// ─── Privacy Policy (public, required by OAuth providers) ────────────────────
+app.get("/privacy", (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Social Command Center</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 760px; margin: 40px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.7; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.15rem; font-weight: 600; margin-top: 2rem; }
+    p, li { font-size: 0.975rem; color: #333; }
+    ul { padding-left: 1.5rem; }
+    a { color: #0A66C2; }
+    .meta { color: #666; font-size: 0.875rem; margin-bottom: 2.5rem; }
+    hr { border: none; border-top: 1px solid #e5e5e5; margin: 2.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Social Command Center &mdash; Last updated: July 6, 2025</p>
+
+  <p>Social Command Center ("the App") is a private social media management tool. This policy explains what data is collected, how it is used, and how it is protected.</p>
+
+  <h2>1. Data We Collect</h2>
+  <ul>
+    <li><strong>Social account credentials:</strong> OAuth access tokens for Facebook, Instagram, and LinkedIn pages you explicitly connect. Tokens are encrypted at rest.</li>
+    <li><strong>Page and account metadata:</strong> Account names, IDs, and page insights (follower counts, reach, engagement) fetched from connected platforms.</li>
+    <li><strong>Posts and media:</strong> Content you create or schedule through the App.</li>
+    <li><strong>Usage data:</strong> Server logs (timestamps, HTTP status codes) for debugging. No analytics or tracking cookies are used.</li>
+  </ul>
+
+  <h2>2. How We Use Your Data</h2>
+  <ul>
+    <li>To publish posts, read comments, and retrieve insights on your behalf via the respective platform APIs.</li>
+    <li>To display performance metrics on the KPI dashboard.</li>
+    <li>We do not sell, share, or disclose your data to third parties beyond the platform APIs required to operate the App.</li>
+  </ul>
+
+  <h2>3. Third-Party Platforms</h2>
+  <p>The App integrates with Meta (Facebook &amp; Instagram) and LinkedIn via their official APIs. Your use of those platforms is governed by their own privacy policies:</p>
+  <ul>
+    <li><a href="https://www.facebook.com/privacy/policy/" target="_blank">Meta Privacy Policy</a></li>
+    <li><a href="https://www.linkedin.com/legal/privacy-policy" target="_blank">LinkedIn Privacy Policy</a></li>
+  </ul>
+
+  <h2>4. Data Retention</h2>
+  <p>Access tokens are stored only as long as the account remains connected. Disconnecting an account removes the stored token from our database. Post records and insights are retained for historical reporting and can be deleted on request.</p>
+
+  <h2>5. Security</h2>
+  <p>All tokens are AES-256 encrypted before storage. The App is served over HTTPS. Database access is restricted to the application server.</p>
+
+  <h2>6. Your Rights</h2>
+  <p>You may disconnect any account at any time via the Connected Accounts page, which revokes the App's access and deletes the stored token. To request deletion of all stored data, contact the App administrator.</p>
+
+  <h2>7. Contact</h2>
+  <p>This is a private business tool. For questions about data handling, contact the account administrator directly.</p>
+
+  <hr />
+  <p style="font-size:0.8rem;color:#888;">&copy; ${new Date().getFullYear()} Social Command Center. All rights reserved.</p>
+</body>
+</html>`);
+});
+
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   sendError(res, "NOT_FOUND", "Route not found", undefined, 404);
