@@ -14,7 +14,7 @@ const router = Router();
 const generateCaptionSchema = z.object({
   postTitle: z.string().min(1).max(300),
   platforms: z
-    .array(z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]))
+    .array(z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]))
     .min(1),
   tone: z
     .enum(["professional", "casual", "educational", "promotional"])
@@ -127,7 +127,7 @@ Return only the rewritten caption with no explanation, preamble, or quotes.`;
 const generateReplySchema = z.object({
   commentText: z.string().min(1).max(5000),
   commenterName: z.string().max(200).optional(),
-  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]).optional(),
   tone: z.enum(["professional", "friendly", "helpful", "sales", "technical"]).default("professional"),
   postTitle: z.string().max(500).optional(),
   postCaption: z.string().max(2000).optional(),
@@ -320,7 +320,7 @@ Labels: "Excellent" (great, ready to post), "Good" (minor imperfections, accepta
 const analyzeCommentSchema = z.object({
   commentText: z.string().min(1).max(5000),
   commenterName: z.string().max(200).optional(),
-  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "TIKTOK", "WEBSITE"]).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]).optional(),
 });
 
 router.post(
