@@ -126,7 +126,7 @@ app.get("/privacy", (_req: Request, res: Response) => {
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="meta">Social Command Center &mdash; Last updated: July 6, 2025</p>
+  <p class="meta">Social Command Center &mdash; Last updated: July 6, 2026</p>
 
   <p>Social Command Center ("the App") is a private social media management tool. This policy explains what data is collected, how it is used, and how it is protected.</p>
 
