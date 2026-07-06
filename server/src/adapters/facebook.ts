@@ -627,11 +627,10 @@ export async function getPageInsights(opts: {
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  // page_impressions_unique (Page Reach) deprecated June 2026 across all API versions.
-  // Use page_impressions as reach proxy; page_engaged_users + page_post_engagements for engagement.
+  // page_impressions_unique + page_engaged_users deprecated June 2026.
+  // page_impressions (total views) + page_post_engagements are the safest available v21 metrics.
   const dailyMetrics = [
     "page_impressions",
-    "page_engaged_users",
     "page_post_engagements",
   ];
 
@@ -690,12 +689,11 @@ export async function getPageInsights(opts: {
 
   const sum = (pts: DailyDataPoint[]) => pts.reduce((acc, p) => acc + p.value, 0);
 
-  // page_impressions_unique removed June 2026; use page_impressions as reach+impressions proxy
   const dailyImpressions = daily("page_impressions");
-  const dailyEngaged = daily("page_engaged_users");
-  const dailyReach = dailyImpressions; // chart alias — same series
+  const dailyEngaged = daily("page_post_engagements");
+  const dailyReach = dailyImpressions;
 
-  const followerGrowth30d = 0; // no reliable daily fan-adds metric; fan_count snapshot used instead
+  const followerGrowth30d = 0;
   const impressions30d = sum(dailyImpressions);
   const reach30d = impressions30d;
   const engagedUsers30d = sum(dailyEngaged);
