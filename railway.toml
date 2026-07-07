@@ -1,0 +1,16 @@
+# Railway config for the combined (frontend + API) deploy.
+# Effective when the Railway service rootDirectory is the repo root.
+# NOTE: the Railway dashboard's Builder/Root Directory settings override this
+# file, so also set them there (see project deployment notes).
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+preDeployCommand = "npx prisma migrate deploy"
+startCommand = "node dist/index.js"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

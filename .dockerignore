@@ -1,0 +1,27 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies — reinstalled inside the image
+**/node_modules
+
+# Build outputs — rebuilt inside the image
+**/dist
+**/.tsbuildinfo
+
+# Replit agent / local state — not needed for the build
+.local
+.agents
+.upm
+.cache
+.config
+
+# Logs
+**/*.log
+
+# Assets not imported by the frontend build
+attached_assets
+
+# Env files — secrets are injected by Railway at runtime, never baked in
+**/.env
+**/.env.*

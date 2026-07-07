@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import * as path from "path";
+import { existsSync } from "fs";
 import { logger } from "./utils/logger.js";
 import { sendError } from "./utils/response.js";
 import { AppError } from "./utils/errors.js";
@@ -169,6 +170,45 @@ app.get("/privacy", (_req: Request, res: Response) => {
 </body>
 </html>`);
 });
+
+// ─── Static frontend (single-domain production deploy) ──────────────────────
+// In the combined Railway image the built React app is copied to /app/public,
+// so one domain serves both the API (/api/*) and the SPA. Guarded by existsSync
+// so local dev and tests (where no build is present) fall straight through to
+// the JSON 404 below and are completely unaffected.
+const publicDir = path.join(process.cwd(), "public");
+const indexHtml = path.join(publicDir, "index.html");
+
+if (existsSync(indexHtml)) {
+  app.use(
+    express.static(publicDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        // Vite emits content-hashed filenames under /assets — cache forever.
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    }),
+  );
+
+  // SPA fallback: any non-API GET/HEAD that didn't match a static file returns
+  // index.html so client-side routing (wouter) can take over. Non-GET and /api
+  // requests fall through to the JSON 404 handler below.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (
+      (req.method === "GET" || req.method === "HEAD") &&
+      !req.path.startsWith("/api")
+    ) {
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(indexHtml);
+      return;
+    }
+    next();
+  });
+}
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
