@@ -352,3 +352,35 @@ model PlatformStats {
 
   @@index([accountId, polledAt])
 }
+
+// ─── Hashtag & Mention libraries ──────────────────────────────────────────────
+// Reusable hashtag sets and mention contacts/groups surfaced in the composer.
+
+model HashtagSet {
+  id        String   @id @default(cuid())
+  name      String
+  platforms String[] @default([])
+  hashtags  String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MentionContact {
+  id          String   @id @default(cuid())
+  displayName String
+  category    String   @default("")
+  platforms   String[] @default([])
+  handles     Json     @default("{}")
+  linkedinUrn String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MentionGroup {
+  id         String   @id @default(cuid())
+  name       String
+  contactIds String[] @default([])
+  platforms  String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

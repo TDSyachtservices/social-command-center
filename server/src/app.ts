@@ -21,6 +21,9 @@ import authRouter from "./routes/auth.routes.js";
 import insightsRouter from "./routes/insights.routes.js";
 import webhookRouter from "./routes/webhook.routes.js";
 import notificationsRouter from "./routes/notifications.routes.js";
+import hashtagSetsRouter from "./routes/hashtag-sets.routes.js";
+import mentionContactsRouter from "./routes/mention-contacts.routes.js";
+import mentionGroupsRouter from "./routes/mention-groups.routes.js";
 
 const app = express();
 
@@ -116,6 +119,9 @@ app.use("/api/auth", authRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/hashtag-sets", hashtagSetsRouter);
+app.use("/api/mention-contacts", mentionContactsRouter);
+app.use("/api/mention-groups", mentionGroupsRouter);
 
 // ─── Privacy Policy (public, required by OAuth providers) ────────────────────
 app.get("/privacy", (_req: Request, res: Response) => {
