@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
-  Link2, ScrollText, MessageCircle, Globe, Settings,
+  Link2, ScrollText, MessageCircle, Settings,
   Image as ImageIcon, BarChart2, ChevronDown, Hash, AtSign,
   Instagram, Facebook,
 } from "lucide-react";
@@ -57,7 +57,6 @@ const sections: NavSection[] = [
     collapsible: true,
     links: [
       { href: "/connected-accounts", label: "Connected Accounts", icon: Link2         },
-      { href: "/website-api",        label: "Website API",        icon: Globe         },
       { href: "/publish-logs",       label: "Publish Logs",       icon: ScrollText    },
       { href: "/comment-logs",       label: "Comment Logs",       icon: MessageCircle },
       { href: "/settings",           label: "Settings",           icon: Settings      },

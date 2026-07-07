@@ -14,34 +14,39 @@ const ALL_TYPES: Array<{
   icon: React.ReactNode;
   description: string;
   platforms: string[];
+  platformLabel: string;
 }> = [
   {
     type: "standard",
     label: "Standard",
     icon: <ImageIcon className="w-4 h-4" />,
-    description: "Text, single photo, or video",
-    platforms: ["Facebook", "Instagram"],
+    description: "Text, photo, or video post",
+    platforms: ["Facebook", "Instagram", "LinkedIn"],
+    platformLabel: "All platforms",
   },
   {
     type: "album",
-    label: "Album / Carousel",
+    label: "Album",
     icon: <Images className="w-4 h-4" />,
-    description: "Multiple photos (FB album, IG carousel)",
+    description: "Multiple photos (FB album / IG carousel)",
     platforms: ["Facebook", "Instagram"],
+    platformLabel: "FB · IG",
   },
   {
     type: "reel",
     label: "Reel",
     icon: <Clapperboard className="w-4 h-4" />,
-    description: "Short vertical video with music",
+    description: "Short vertical video",
     platforms: ["Facebook", "Instagram"],
+    platformLabel: "FB · IG",
   },
   {
     type: "story",
     label: "Story",
     icon: <Sparkles className="w-4 h-4" />,
-    description: "Ephemeral 24h content",
-    platforms: ["Facebook", "Instagram"],
+    description: "Ephemeral 24-hour content",
+    platforms: ["Facebook"],
+    platformLabel: "Facebook only",
   },
   {
     type: "event",
@@ -49,6 +54,7 @@ const ALL_TYPES: Array<{
     icon: <CalendarDays className="w-4 h-4" />,
     description: "Facebook Event with RSVP fields",
     platforms: ["Facebook"],
+    platformLabel: "Facebook only",
   },
 ];
 
@@ -57,12 +63,27 @@ export function PostTypeSelector({ value, onChange, availablePlatforms }: PostTy
     t.platforms.some((p) => availablePlatforms.includes(p))
   );
 
+  const linkedInOnly = availablePlatforms.length > 0 && availablePlatforms.every(p => p === "LinkedIn");
+
+  if (linkedInOnly) {
+    return (
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Post Type</label>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 border rounded-md px-3 py-2">
+          <ImageIcon className="w-4 h-4 shrink-0" />
+          <span>LinkedIn only supports Standard posts</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium">Post Type</label>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {relevant.map((item) => {
           const active = value === item.type;
+          const notOnLinkedIn = availablePlatforms.includes("LinkedIn") && !item.platforms.includes("LinkedIn");
           return (
             <button
               key={item.type}
@@ -75,9 +96,17 @@ export function PostTypeSelector({ value, onChange, availablePlatforms }: PostTy
                   : "border-border hover:border-primary/50 hover:bg-accent/40",
               ].join(" ")}
             >
-              <div className={active ? "text-primary" : "text-muted-foreground"}>{item.icon}</div>
+              <div className="flex items-center justify-between gap-1">
+                <div className={active ? "text-primary" : "text-muted-foreground"}>{item.icon}</div>
+                <span className={`text-[9px] font-medium px-1 py-0.5 rounded bg-muted text-muted-foreground border border-border/60`}>
+                  {item.platformLabel}
+                </span>
+              </div>
               <span className={`text-xs font-semibold ${active ? "text-primary" : ""}`}>{item.label}</span>
               <span className="text-[10px] text-muted-foreground leading-tight">{item.description}</span>
+              {notOnLinkedIn && (
+                <span className="text-[9px] text-amber-600 leading-tight">LinkedIn skipped</span>
+              )}
             </button>
           );
         })}

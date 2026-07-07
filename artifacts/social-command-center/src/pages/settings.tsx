@@ -12,7 +12,6 @@ const defaultSettings = {
   general: { timezone: "America/New_York", dateFormat: "MM/DD/YYYY", timeFormat: "12h" },
   scheduling: { defaultPostTime: "09:00", autoRetryFailed: false, retryAttempts: 3 },
   socialInbox: { autoAssignComments: false, profanityFilter: false, autoHideProfanity: false },
-  websiteApi: { endpointUrl: "", requireApproval: true },
   ai: { model: "llama3-8b", endpoint: "", temperature: 0.7, brandVoice: "" },
   n8n: { webhookUrl: "", enabled: false },
 };
@@ -62,7 +61,6 @@ export default function Settings() {
           <TabsTrigger value="general" className="shrink-0 px-3 py-1.5 text-sm">General</TabsTrigger>
           <TabsTrigger value="scheduling" className="shrink-0 px-3 py-1.5 text-sm">Scheduling</TabsTrigger>
           <TabsTrigger value="inbox" className="shrink-0 px-3 py-1.5 text-sm">Inbox</TabsTrigger>
-          <TabsTrigger value="website" className="shrink-0 px-3 py-1.5 text-sm">Website API</TabsTrigger>
           <TabsTrigger value="ai" className="shrink-0 px-3 py-1.5 text-sm">AI</TabsTrigger>
           <TabsTrigger value="n8n" className="shrink-0 px-3 py-1.5 text-sm">n8n</TabsTrigger>
         </TabsList>
@@ -165,18 +163,6 @@ export default function Settings() {
                 <label className="text-sm font-medium">Endpoint URL</label>
                 <Input value={settings.ai.endpoint} onChange={(e) => setSettings({...settings, ai: {...settings.ai, endpoint: e.target.value}})} />
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="website" className="m-0 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Website API</CardTitle>
-              <CardDescription>Configure the website CMS integration.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Configure website integration settings from the Website API page.</p>
             </CardContent>
           </Card>
         </TabsContent>

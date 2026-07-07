@@ -19,7 +19,6 @@ export function TopHeader() {
     if (location === "/publish-logs") return "Publish Logs";
     if (location === "/comment-logs") return "Comment Logs";
     if (location === "/ai-assistant") return "AI Assistant";
-    if (location === "/website-api") return "Website API";
     if (location === "/settings") return "Settings";
     if (location.startsWith("/media-optimizer")) return "Media Optimizer";
     if (location === "/media-library") return "Media Library";

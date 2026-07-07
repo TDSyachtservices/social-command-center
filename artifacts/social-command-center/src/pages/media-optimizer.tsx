@@ -44,8 +44,6 @@ const PLATFORM_DISPLAY: Record<string, string> = {
   LINKEDIN: "LinkedIn",
 };
 
-const HIDDEN_PLATFORMS = new Set(["TIKTOK", "WEBSITE"]);
-
 function toDisplaySpec(s: ApiMediaSpec): DisplaySpec {
   return {
     platform: PLATFORM_DISPLAY[s.platform] ?? s.platform,
@@ -408,7 +406,7 @@ export default function MediaOptimizer() {
 
   useEffect(() => {
     getMediaSpecs().then((raw) =>
-      setSpecs(raw.filter((s) => !HIDDEN_PLATFORMS.has(s.platform)).map(toDisplaySpec))
+      setSpecs(raw.map(toDisplaySpec))
     );
   }, []);
 
@@ -767,7 +765,7 @@ export default function MediaOptimizer() {
               <span className="text-xs bg-muted px-2 py-0.5 rounded border">
                 {asset.originalWidth} × {asset.originalHeight}
               </span>
-              {asset.allVersions.length > 0 && (
+              {asset.originalFileType !== "video" && asset.allVersions.length > 0 && (
                 <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded border border-green-200 dark:border-green-800 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" />
                   {asset.allVersions.length} sizes
@@ -778,7 +776,24 @@ export default function MediaOptimizer() {
 
           <hr />
 
-          {/* Preset selection */}
+          {/* Videos are stored and posted as-is — the resize pipeline is images-only. */}
+          {asset.originalFileType === "video" ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-4 space-y-2" data-testid="banner-video-not-optimizable">
+              <div className="flex items-center gap-2 font-semibold text-sm text-amber-800 dark:text-amber-300">
+                <Film className="w-4 h-4 flex-shrink-0" />
+                Videos can&apos;t be optimized
+              </div>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                Platform-specific resizing works for images only. This video will be posted to
+                each platform in its original format — Facebook, Instagram, and LinkedIn handle
+                video conversion on their side.
+              </p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                Tip: upload videos already shaped for where they&apos;ll run — 16:9 landscape for
+                feeds, 9:16 vertical for Stories and Reels.
+              </p>
+            </div>
+          ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Filter by platform</h3>
@@ -850,6 +865,7 @@ export default function MediaOptimizer() {
               </Button>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -871,26 +887,32 @@ export default function MediaOptimizer() {
                   ({displayedVersions.length})
                 </span>
               </h2>
-              <div className="flex items-center gap-3">
-                <p className="hidden lg:block text-sm text-muted-foreground">
-                  Click <strong>Edit Crop</strong> to adjust the focal point
+              {asset.originalFileType === "video" ? (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Videos post as-is — optimization is images-only
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={isScoringAll || displayedVersions.every((v) => !v.publicUrl)}
-                  onClick={handleCheckAll}
-                  data-testid="btn-ai-check-all"
-                >
-                  {isScoringAll ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  {isScoringAll ? "Checking…" : "AI check all"}
-                </Button>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <p className="hidden lg:block text-sm text-muted-foreground">
+                    Click <strong>Edit Crop</strong> to adjust the focal point
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={isScoringAll || displayedVersions.every((v) => !v.publicUrl)}
+                    onClick={handleCheckAll}
+                    data-testid="btn-ai-check-all"
+                  >
+                    {isScoringAll ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    {isScoringAll ? "Checking…" : "AI check all"}
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="p-5 overflow-y-auto flex-1">
@@ -1007,7 +1029,19 @@ export default function MediaOptimizer() {
 
                 {displayedVersions.length === 0 && (
                   <div className="col-span-full p-10 text-center border-2 border-dashed rounded-lg space-y-4">
-                    {asset.allVersions.length === 0 ? (
+                    {asset.originalFileType === "video" ? (
+                      // Videos are posted as-is — no versions to generate.
+                      <div className="space-y-3">
+                        <div className="mx-auto w-14 h-14 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+                          <Film className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <p className="font-semibold text-foreground text-base">No versions for videos</p>
+                        <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                          Optimization is for images only. This video will be posted to each
+                          platform exactly as uploaded.
+                        </p>
+                      </div>
+                    ) : asset.allVersions.length === 0 ? (
                       // No server versions exist — offer to generate them inline.
                       isProcessing ? (
                         <div className="space-y-3">

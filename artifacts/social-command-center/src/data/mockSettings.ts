@@ -14,10 +14,6 @@ export const mockSettings = {
     profanityFilter: true,
     autoHideProfanity: true
   },
-  websiteApi: {
-    endpointUrl: "https://api.marinedeckingco.com/v1",
-    requireApproval: true
-  },
   ai: {
     model: "llama3-70b",
     endpoint: "http://localhost:11434/v1",

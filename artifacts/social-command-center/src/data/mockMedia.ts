@@ -6,7 +6,7 @@ export type MediaType = "image" | "video";
 export interface MediaVersion {
   id: string;
   mediaAssetId: string;
-  platform: "Facebook" | "Instagram" | "LinkedIn" | "TikTok" | "Website";
+  platform: "Facebook" | "Instagram" | "LinkedIn";
   placement: string;        // e.g. "Feed Square", "Story / Reel", "Hero Image"
   width: number;
   height: number;
@@ -67,9 +67,6 @@ export const mockMediaAssets: MediaAsset[] = [
       {
         id: "v_1_4", mediaAssetId: "asset_1", platform: "LinkedIn", placement: "Feed Landscape", width: 1200, height: 627, aspectRatio: "1.91:1", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 520000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Excellent", validationErrors: [], validationWarnings: []
       },
-      {
-        id: "v_1_5", mediaAssetId: "asset_1", platform: "Website", placement: "Hero Image", width: 1920, height: 1080, aspectRatio: "16:9", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 1100000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Excellent", validationErrors: [], validationWarnings: []
-      }
     ]
   },
   {
@@ -92,12 +89,6 @@ export const mockMediaAssets: MediaAsset[] = [
       {
         id: "v_2_2", mediaAssetId: "asset_2", platform: "Instagram", placement: "Feed Portrait", width: 1080, height: 1350, aspectRatio: "4:5", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 580000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "smart_crop", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Needs Review", validationErrors: [], validationWarnings: ["Significant crop from 16:9 to 4:5"]
       },
-      {
-        id: "v_2_3", mediaAssetId: "asset_2", platform: "TikTok", placement: "Vertical", width: 1080, height: 1920, aspectRatio: "9:16", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 620000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "blurred_background_fill", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Poor", validationErrors: ["Original is landscape; vertical conversion requires heavy background fill"], validationWarnings: []
-      },
-      {
-        id: "v_2_4", mediaAssetId: "asset_2", platform: "Website", placement: "Blog", width: 1200, height: 675, aspectRatio: "16:9", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 390000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Excellent", validationErrors: [], validationWarnings: []
-      }
     ]
   },
   {
@@ -120,9 +111,6 @@ export const mockMediaAssets: MediaAsset[] = [
       {
         id: "v_3_2", mediaAssetId: "asset_3", platform: "Facebook", placement: "Reel", width: 1080, height: 1920, aspectRatio: "9:16", format: "MP4", mimeType: "video/mp4", fileSizeBytes: 25000000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "smart_crop", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Needs Review", validationErrors: [], validationWarnings: []
       },
-      {
-        id: "v_3_3", mediaAssetId: "asset_3", platform: "Website", placement: "Hero Video", width: 1920, height: 1080, aspectRatio: "16:9", format: "MP4", mimeType: "video/mp4", fileSizeBytes: 42000000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Excellent", validationErrors: [], validationWarnings: []
-      }
     ]
   },
   {
@@ -148,12 +136,6 @@ export const mockMediaAssets: MediaAsset[] = [
       {
         id: "v_4_3", mediaAssetId: "asset_4", platform: "LinkedIn", placement: "Feed Square", width: 1080, height: 1080, aspectRatio: "1:1", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 280000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Excellent", validationErrors: [], validationWarnings: []
       },
-      {
-        id: "v_4_4", mediaAssetId: "asset_4", platform: "TikTok", placement: "Vertical", width: 1080, height: 1920, aspectRatio: "9:16", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 450000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "blurred_background_fill", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Good", validationErrors: [], validationWarnings: ["Square image padded with blurred background for 9:16"]
-      },
-      {
-        id: "v_4_5", mediaAssetId: "asset_4", platform: "Website", placement: "Thumbnail", width: 600, height: 400, aspectRatio: "3:2", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 120000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Good", validationErrors: [], validationWarnings: []
-      }
     ]
   },
   {
@@ -176,9 +158,6 @@ export const mockMediaAssets: MediaAsset[] = [
       {
         id: "v_5_2", mediaAssetId: "asset_5", platform: "Instagram", placement: "Feed", width: 1080, height: 1080, aspectRatio: "1:1", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 650000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Poor", validationErrors: ["Original resolution too low — upscaling required"], validationWarnings: []
       },
-      {
-        id: "v_5_3", mediaAssetId: "asset_5", platform: "Website", placement: "Thumbnail", width: 600, height: 400, aspectRatio: "3:2", format: "JPG", mimeType: "image/jpeg", fileSizeBytes: 180000, previewUrl: "placeholder", processingStatus: "complete", cropMode: "fit", focalPoint: { x: 0.5, y: 0.5 }, safeZoneWarnings: [], qualityScore: "Good", validationErrors: [], validationWarnings: []
-      }
     ]
   }
 ];

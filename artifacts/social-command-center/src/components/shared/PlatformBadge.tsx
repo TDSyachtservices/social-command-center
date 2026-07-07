@@ -1,5 +1,5 @@
-import { SiFacebook, SiInstagram, SiTiktok, SiN8N } from "react-icons/si";
-import { Globe, Linkedin, Bot, ComponentIcon } from "lucide-react";
+import { SiFacebook, SiInstagram, SiN8N } from "react-icons/si";
+import { Linkedin, Bot, ComponentIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ElementType } from "react";
 
@@ -19,10 +19,6 @@ function getPlatformConfig(platform: ExtendedPlatform): { Icon: ElementType; col
       return { Icon: SiInstagram, colorClass: "text-[#E4405F] bg-[#E4405F]/12 border-[#E4405F]/25", label: "Instagram" };
     case "linkedin":
       return { Icon: Linkedin, colorClass: "text-[#0A66C2] bg-[#0A66C2]/12 border-[#0A66C2]/25", label: "LinkedIn" };
-    case "tiktok":
-      return { Icon: SiTiktok, colorClass: "text-[#00B4B4] bg-[#00B4B4]/12 border-[#00B4B4]/25", label: "TikTok" };
-    case "website":
-      return { Icon: Globe, colorClass: "text-teal-600 bg-teal-500/12 border-teal-500/25", label: "Website" };
     case "n8n":
       return { Icon: SiN8N, colorClass: "text-[#EA4B71] bg-[#EA4B71]/12 border-[#EA4B71]/25", label: "n8n" };
     case "local ai":

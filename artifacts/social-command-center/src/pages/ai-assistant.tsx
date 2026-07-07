@@ -46,7 +46,6 @@ export default function AIAssistant() {
                   <SelectItem value="instagram_caption">Instagram Caption (with hashtags)</SelectItem>
                   <SelectItem value="linkedin_post">LinkedIn Professional Post</SelectItem>
                   <SelectItem value="comment_reply">Comment Reply</SelectItem>
-                  <SelectItem value="website_article">Website Article Idea</SelectItem>
                 </SelectContent>
               </Select>
             </div>

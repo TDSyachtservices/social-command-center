@@ -274,12 +274,10 @@ export default function KPI() {
                 ))
               ) : hasFbInsights ? (
                 <>
-                  <StatCard label="Followers" value={fmtFull(totalFollowers)} sub="Current page likes" colorClass="text-indigo-700" />
-                  <StatCard label="Growth (30d)" value={pct(totalGrowth)} sub="New page likes" colorClass={totalGrowth >= 0 ? "text-emerald-700" : "text-rose-700"} />
-                  <StatCard label="Reach (30d)" value={fmt(totalReach)} sub="Unique accounts reached" colorClass="text-sky-700" />
-                  <StatCard label="Impressions (30d)" value={fmt(totalImpressions)} sub="Total content views" colorClass="text-violet-700" />
-                  <StatCard label="Engaged Users (30d)" value={fmt(totalEngaged)} sub="Clicked, liked, or commented" colorClass="text-orange-700" />
-                  <StatCard label="Avg Eng. Rate" value={`${avgEngRate}%`} sub="Engaged / reach" colorClass="text-rose-700" />
+                  <StatCard label="Followers" value={fmtFull(totalFollowers)} sub="Current page followers" colorClass="text-indigo-700" />
+                  <StatCard label="Fan Growth (30d)" value="—" sub="Not tracked — Meta removed this metric" colorClass="text-muted-foreground" />
+                  <StatCard label="Page Views (30d)" value={fmt(totalReach)} sub="Total visits to your page" colorClass="text-sky-700" />
+                  <StatCard label="Post Engagements (30d)" value={fmt(totalEngaged)} sub="Likes, comments & shares on posts" colorClass="text-orange-700" />
                   <StatCard label="Connected Accounts" value={connectedAccounts.length} sub="Active connections" colorClass="text-indigo-700" />
                   <StatCard label="FB Accounts" value={connectedFbAccounts.length} sub="With insights access" colorClass="text-indigo-700" />
                 </>
@@ -361,8 +359,8 @@ export default function KPI() {
           {hasFbInsights && allFbInsights[0]?.dailyReach.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Facebook Reach — Last 30 Days</CardTitle>
-                <CardDescription>Unique accounts reached per day</CardDescription>
+                <CardTitle className="text-base">Facebook Page Views — Last 30 Days</CardTitle>
+                <CardDescription>Total page visits per day</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={200}>
@@ -379,7 +377,7 @@ export default function KPI() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval={4} />
                     <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${v/1000}k` : v} />
-                    <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [fmtFull(v), "Reach"]} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [fmtFull(v), "Page Views"]} />
                     <Area type="monotone" dataKey="value" stroke="#7C6FD0" strokeWidth={2.5} fill="url(#fbReachGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -496,12 +494,11 @@ export default function KPI() {
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
                               {[
-                                { label: "Followers",     value: isLoading ? null : ins ? fmtFull(ins.followers) : "—" },
-                                { label: "Growth (30d)",  value: isLoading ? null : ins ? pct(ins.followerGrowth30d) : "—" },
-                                { label: "Reach (30d)",   value: isLoading ? null : ins ? fmt(ins.reach30d) : "—" },
-                                { label: "Impressions",   value: isLoading ? null : ins ? fmt(ins.impressions30d) : "—" },
-                                { label: "Eng. Rate",     value: isLoading ? null : ins ? `${ins.engagementRate}%` : "—" },
-                                { label: "Published",     value: platformPublished, accent: color },
+                                { label: "Followers",          value: isLoading ? null : ins ? fmtFull(ins.followers) : "—" },
+                                { label: "Fan Growth (30d)",   value: "—" },
+                                { label: "Page Views (30d)",   value: isLoading ? null : ins ? fmt(ins.reach30d) : "—" },
+                                { label: "Post Engagements",   value: isLoading ? null : ins ? fmt(ins.engagedUsers30d) : "—" },
+                                { label: "Published",          value: platformPublished, accent: color },
                               ].map(m => (
                                 <Card key={m.label}>
                                   <CardContent className="p-3">

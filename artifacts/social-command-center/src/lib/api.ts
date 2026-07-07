@@ -185,6 +185,28 @@ export async function getFacebookInsights(
   return { error: result.error, status: result.status };
 }
 
+export interface ApiInstagramInsights {
+  accountId: string;
+  igUserId: string;
+  accountName: string;
+  followers: number;
+  followerGrowth30d: number;
+  reach30d: number;
+  impressions30d: number;
+  profileViews30d: number;
+  dailyReach: ApiInsightsDailyPoint[];
+  dailyImpressions: ApiInsightsDailyPoint[];
+  dailyProfileViews: ApiInsightsDailyPoint[];
+}
+
+export async function getInstagramInsights(
+  accountId: string,
+): Promise<{ data: ApiInstagramInsights } | { error: string; status?: number } | null> {
+  const result = await apiFetch<ApiInstagramInsights>(`/api/insights/instagram/${accountId}`);
+  if (result.ok) return { data: result.data };
+  return { error: result.error, status: result.status };
+}
+
 export async function getAccount(id: string): Promise<ApiAccount | null> {
   const result = await apiFetch<ApiAccount>(`/api/accounts/${id}`);
   return result.ok ? result.data : null;
@@ -718,18 +740,6 @@ export async function analyzeComment(body: {
   return result.ok ? result.data : null;
 }
 
-export async function createWebsiteDraft(body: {
-  postTitle: string;
-  caption: string;
-  tone?: string;
-}): Promise<{ draft: string; mock?: boolean } | null> {
-  const result = await apiFetch<{ draft: string; mock?: boolean }>("/api/ai/create-website-draft", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return result.ok ? result.data : null;
-}
-
 export async function getAiStatus(): Promise<{
   connected: boolean;
   endpoint?: string;
@@ -741,30 +751,6 @@ export async function getAiStatus(): Promise<{
   return result.ok ? result.data : null;
 }
 
-// ─── Website ──────────────────────────────────────────────────────────────────
-
-export async function getWebsiteStatus(): Promise<{ connected: boolean; endpoint?: string } | null> {
-  const result = await apiFetch<{ connected: boolean; endpoint?: string }>("/api/website/status");
-  return result.ok ? result.data : null;
-}
-
-export async function listWebsiteDrafts(): Promise<unknown[] | null> {
-  const result = await apiFetch<unknown[]>("/api/website/drafts");
-  return result.ok ? result.data : null;
-}
-
-export async function publishWebsiteDraft(postId: string): Promise<boolean> {
-  const result = await apiFetch<unknown>("/api/website/publish", {
-    method: "POST",
-    body: JSON.stringify({ postId }),
-  });
-  return result.ok;
-}
-
-export async function getWebsiteSyncLogs(): Promise<unknown[] | null> {
-  const result = await apiFetch<unknown[]>("/api/website/sync-logs");
-  return result.ok ? result.data : null;
-}
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 

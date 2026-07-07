@@ -1,5 +1,5 @@
 import { Platform } from "@/data/mockPosts";
-import { Image as ImageIcon, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, ThumbsUp, Repeat2, Send, Music2, AlertTriangle } from "lucide-react";
+import { Image as ImageIcon, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, ThumbsUp, Repeat2, Send, AlertTriangle } from "lucide-react";
 
 interface SocialPreviewCardProps {
   platform: Platform;
@@ -171,78 +171,6 @@ function LinkedInPreview({ caption, mediaUrl, mediaType, date, accountName }: Om
             {label}
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ── TikTok ───────────────────────────────────────────────────────────────────
-function TikTokPreview({ caption, mediaUrl, mediaType, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
-  const handle = accountName ? "@" + accountName.toLowerCase().replace(/\s+/g, "") : "@your_account";
-  return (
-    <div className="rounded-lg overflow-hidden bg-black shadow-sm relative font-sans" style={{ aspectRatio: "9/16", maxHeight: 480 }}>
-      {mediaUrl ? (
-        mediaType === "video" ? (
-          <video src={mediaUrl} className="absolute inset-0 w-full h-full object-cover" autoPlay muted loop playsInline controls />
-        ) : (
-          <img src={mediaUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        )
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center text-white/30">
-          <ImageIcon className="h-12 w-12" />
-        </div>
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
-
-      <div className="absolute bottom-0 left-0 right-10 p-3 space-y-1 pointer-events-none">
-        <div className="text-white font-semibold text-[12px]">{handle}</div>
-        {caption && (
-          <div className="text-white/90 text-[11px] leading-snug line-clamp-2 whitespace-pre-wrap">{caption}</div>
-        )}
-        <div className="flex items-center gap-1 text-white/80 text-[11px]">
-          <Music2 className="h-3 w-3" />
-          <span className="truncate">Original sound — {accountName || "Your Account"}</span>
-        </div>
-      </div>
-
-      <div className="absolute right-2 bottom-12 flex flex-col items-center gap-4 pointer-events-none">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-red-500 border-2 border-white flex items-center justify-center">
-          <span className="text-white text-[8px] font-bold">+</span>
-        </div>
-        {[
-          { icon: <Heart className="h-5 w-5 text-white" />, count: "24K" },
-          { icon: <MessageCircle className="h-5 w-5 text-white" />, count: "312" },
-          { icon: <Bookmark className="h-5 w-5 text-white" />, count: "1.2K" },
-          { icon: <Share2 className="h-5 w-5 text-white" />, count: "Share" },
-        ].map(({ icon, count }, i) => (
-          <div key={i} className="flex flex-col items-center gap-0.5">
-            {icon}
-            <span className="text-white text-[9px]">{count}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Website OG ───────────────────────────────────────────────────────────────
-function WebsitePreview({ caption, mediaUrl, mediaType, accountName }: Omit<SocialPreviewCardProps, "platform" | "optimizedVersion" | "date">) {
-  const domain = accountName ? accountName.toLowerCase().replace(/\s+/g, "") + ".com" : "yourwebsite.com";
-  const title = caption ? caption.split("\n")[0].slice(0, 60) : "Your post title";
-  const description = caption && caption.includes("\n") ? caption.split("\n").slice(1).join(" ").slice(0, 120) : caption?.slice(0, 120) || "";
-  return (
-    <div className="rounded-lg border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden font-sans text-[13px]">
-      {mediaUrl ? (
-        <div className="aspect-[1.91/1] w-full overflow-hidden">
-          <MediaEl url={mediaUrl} mediaType={mediaType} className="w-full h-full object-cover" />
-        </div>
-      ) : (
-        <MediaPlaceholder className="aspect-[1.91/1]" />
-      )}
-      <div className="p-3 border-t bg-muted/20 space-y-0.5">
-        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{domain}</div>
-        <div className="font-semibold text-[13px] leading-snug line-clamp-2">{title}</div>
-        {description && <div className="text-[11px] text-muted-foreground line-clamp-2">{description}</div>}
       </div>
     </div>
   );

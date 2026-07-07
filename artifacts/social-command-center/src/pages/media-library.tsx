@@ -276,7 +276,7 @@ export default function MediaLibrary() {
 
   const filters = [
     "All", "Images", "GIFs", "Videos", "Needs Review", "Failed",
-    "Ready for Facebook", "Ready for Instagram", "Ready for LinkedIn", "Ready for TikTok", "Ready for Website"
+    "Ready for Facebook", "Ready for Instagram", "Ready for LinkedIn"
   ];
 
   const filteredAssets = assets.filter(asset => {
@@ -417,16 +417,34 @@ export default function MediaLibrary() {
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-2 border-t mt-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full ${scoreColor}`} />
-                    <span className="text-muted-foreground">{asset.generatedVersions.length} versions generated</span>
-                  </div>
+                  {asset.originalFileType === "video" ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-muted-foreground/40" />
+                      <span className="text-muted-foreground">Posts as-is — optimization is images-only</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${scoreColor}`} />
+                      <span className="text-muted-foreground">{asset.generatedVersions.length} versions generated</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button variant="default" size="sm" className="w-full" asChild data-testid={`btn-optimize-${asset.id}`}>
-                    <Link href={`/media-optimizer/${asset.id}`}>Optimize</Link>
-                  </Button>
+                  {asset.originalFileType === "video" ? (
+                    <div
+                      className="w-full"
+                      title="Videos can't be optimized — they're posted to each platform in their original format"
+                    >
+                      <Button variant="secondary" size="sm" className="w-full" disabled data-testid={`btn-optimize-${asset.id}`}>
+                        Optimize
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="default" size="sm" className="w-full" asChild data-testid={`btn-optimize-${asset.id}`}>
+                      <Link href={`/media-optimizer/${asset.id}`}>Optimize</Link>
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" className="w-full" onClick={() => handleDuplicate(asset.id)} data-testid={`btn-duplicate-${asset.id}`}>
                     Duplicate
                   </Button>

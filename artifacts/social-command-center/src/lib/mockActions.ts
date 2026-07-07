@@ -58,11 +58,6 @@ export async function mockGenerateReply(commentText: string, tone: string): Prom
   return { reply: `Mock AI reply (${tone} tone) to: "${commentText}". Please contact our team for more info!` };
 }
 
-export async function mockCreateWebsiteDraft(postId: string, type: string): Promise<{ success: boolean; draftId: string }> {
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { success: true, draftId: `wp_${Date.now()}` };
-}
-
 export async function mockCheckConnection(accountId: string): Promise<{ connected: boolean; status: string }> {
   await new Promise(resolve => setTimeout(resolve, 800));
   return { connected: true, status: "connected" };
