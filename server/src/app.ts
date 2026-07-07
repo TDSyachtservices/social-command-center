@@ -49,6 +49,12 @@ function isAlwaysAllowed(origin: string): boolean {
   if (origin.endsWith(".replit.dev")) return true;
   if (origin.endsWith(".repl.co")) return true;
   if (origin.endsWith(".replit.app")) return true;
+  // Railway production domains. The single-image deploy serves the SPA and API
+  // from the same Railway origin, but Vite marks the <script>/<link> asset tags
+  // `crossorigin`, so the browser sends an Origin header even for these
+  // same-origin asset requests. This origin MUST be allowed or the browser
+  // cannot load the app's own JS/CSS and the page renders blank.
+  if (origin.endsWith(".railway.app")) return true;
   return false;
 }
 
@@ -65,7 +71,13 @@ app.use(
       }
       // In development allow everything; in production block unknown origins.
       if (process.env.NODE_ENV !== "production") { cb(null, true); return; }
-      cb(new Error(`CORS: origin '${origin}' not allowed`));
+      // Reject WITHOUT throwing. Passing an Error here makes the cors middleware
+      // call next(err), which routes to the global handler and returns a 500 for
+      // the ENTIRE response — including static JS/CSS assets — blanking the SPA.
+      // cb(null, false) instead omits the CORS headers (the browser still
+      // enforces the policy) while letting the request complete normally.
+      logger.warn({ origin }, "CORS: origin not in allowlist; responding without CORS headers");
+      cb(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
