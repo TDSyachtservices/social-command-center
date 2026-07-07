@@ -37,43 +37,43 @@ export default function Dashboard() {
 
   useEffect(() => {
     listPosts({ limit: 100 }).then((apiPosts) => {
-      if (apiPosts !== null) {
+      if (Array.isArray(apiPosts)) {
         setPosts(apiPosts.map(p => ({
           id: p.id,
-          title: p.title,
-          status: p.status.toLowerCase(),
+          title: p.title ?? "",
+          status: (p.status ?? "").toLowerCase(),
           scheduledAt: p.scheduledAt,
-          platforms: p.platforms.map(pl => pl.platform.toLowerCase()),
+          platforms: (p.platforms ?? []).map(pl => (pl.platform ?? "").toLowerCase()),
         })));
       }
     });
     listComments({ limit: 50 }).then((apiComments) => {
-      if (apiComments !== null) {
+      if (Array.isArray(apiComments)) {
         setComments(apiComments.map(c => ({
           id: c.id,
-          platform: c.platform.toLowerCase(),
-          commenterName: c.commenterName,
-          commentText: c.commentText,
-          status: c.status.toLowerCase(),
+          platform: (c.platform ?? "").toLowerCase(),
+          commenterName: c.commenterName ?? "",
+          commentText: c.commentText ?? "",
+          status: (c.status ?? "").toLowerCase(),
         })));
       }
     });
     listAccounts().then((apiAccounts) => {
-      if (apiAccounts !== null) {
+      if (Array.isArray(apiAccounts)) {
         setAccounts(apiAccounts.map(a => ({
           id: a.id,
-          accountName: a.accountName,
-          connectionStatus: a.connectionStatus,
+          accountName: a.accountName ?? "",
+          connectionStatus: a.connectionStatus ?? "",
         })));
       }
     });
     listPublishLogs().then((apiLogs) => {
-      if (apiLogs !== null) {
+      if (Array.isArray(apiLogs)) {
         setLogs(apiLogs.map(l => ({
           id: l.id,
-          postTitle: l.postTitle,
-          action: l.action,
-          status: l.status,
+          postTitle: l.postTitle ?? "",
+          action: l.action ?? "",
+          status: l.status ?? "",
           timestamp: l.timestamp,
         })));
       }
