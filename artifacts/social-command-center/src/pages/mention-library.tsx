@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AtSign, Plus, Pencil, Trash2, X, Check, AlertTriangle, Loader2, Users, Link } from "lucide-react";
+import { AtSign, Plus, Pencil, Trash2, X, Check, AlertTriangle, Loader2, Users, Link, Sparkles, ShieldCheck, ShieldQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import {
   validateHandle, contactHasHandle, getCategories, MENTION_RULES,
   type MentionContact, type MentionGroup,
 } from "@/lib/mentionStore";
+import { suggestMentions, type MentionSuggestion } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 
 const ALL_PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
@@ -287,6 +288,194 @@ function GroupDialog({ open, initial, contacts, onClose, onSave, isSaving }: {
   );
 }
 
+// ─── Suggest accounts dialog ──────────────────────────────────────────────────
+
+function SuggestMentionsDialog({
+  open,
+  category: initialCategory,
+  existingHandles,
+  onClose,
+  onAdd,
+}: {
+  open: boolean;
+  category: string;
+  existingHandles: Set<string>;
+  onClose: () => void;
+  onAdd: (data: { displayName: string; category: string; platform: string; handle: string }) => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [platform, setPlatform] = useState<"INSTAGRAM" | "FACEBOOK">("INSTAGRAM");
+  const [category, setCategory] = useState(initialCategory);
+  const [isLoading, setIsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<MentionSuggestion[]>([]);
+  const [addedHandles, setAddedHandles] = useState<Set<string>>(new Set());
+  const [addingHandle, setAddingHandle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setCategory(initialCategory);
+      setSuggestions([]);
+      setAddedHandles(new Set());
+    }
+  }, [open, initialCategory]);
+
+  const handleGenerate = async () => {
+    setIsLoading(true);
+    setSuggestions([]);
+    setAddedHandles(new Set());
+    try {
+      const result = await suggestMentions({ category: category.trim() || undefined, platform, count: 8 });
+      if ("error" in result) {
+        toast({ title: "Couldn't generate suggestions", description: result.error, variant: "destructive" });
+        return;
+      }
+      const fresh = result.suggestions.filter((s) => !existingHandles.has(s.handle.toLowerCase()));
+      setSuggestions(fresh);
+      if (fresh.length === 0) {
+        toast({
+          title: "No new suggestions",
+          description:
+            platform === "INSTAGRAM"
+              ? "AI couldn't verify any new real Instagram accounts for this topic."
+              : "AI couldn't find any new candidates for this topic.",
+        });
+      }
+    } catch {
+      toast({ title: "Couldn't generate suggestions", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdd = async (s: MentionSuggestion) => {
+    setAddingHandle(s.handle);
+    try {
+      await onAdd({
+        displayName: s.name || s.handle,
+        category: category.trim(),
+        platform: platform === "INSTAGRAM" ? "Instagram" : "Facebook",
+        handle: s.handle,
+      });
+      setAddedHandles((prev) => new Set(prev).add(s.handle));
+    } finally {
+      setAddingHandle(null);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4" /> Suggest Accounts</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Platform</label>
+            <div className="flex gap-2">
+              {(["INSTAGRAM", "FACEBOOK"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => { setPlatform(p); setSuggestions([]); }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all ${
+                    platform === p ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  <PlatformBadge platform={p === "INSTAGRAM" ? "Instagram" : "Facebook"} showText={false} className="border-none bg-transparent p-0 w-3 h-3" />
+                  {p === "INSTAGRAM" ? "Instagram" : "Facebook"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Topic / Category (optional)</label>
+            <div className="flex gap-2">
+              <Input
+                placeholder='e.g. "yacht brokers" or "marina influencers"'
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
+              <Button type="button" onClick={handleGenerate} disabled={isLoading} className="gap-1.5 shrink-0">
+                {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                Generate
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {platform === "INSTAGRAM"
+                ? "AI brainstorms candidates; each is verified against the real Instagram account before showing up here."
+                : "AI brainstorms candidates. Facebook has no public verification lookup, so double-check these before using them."}
+            </p>
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Suggestions</label>
+              <div className="space-y-2">
+                {suggestions.map((s) => {
+                  const isAdded = addedHandles.has(s.handle);
+                  return (
+                    <div key={s.handle} className="flex items-center gap-3 p-2.5 rounded-lg border">
+                      {s.profilePictureUrl ? (
+                        <img src={s.profilePictureUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                          <AtSign className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">@{s.handle}</p>
+                          {s.verified ? (
+                            <span title="Verified real account via Instagram lookup">
+                              <ShieldCheck className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                            </span>
+                          ) : (
+                            <span title="Unverified — no public lookup available for Facebook">
+                              <ShieldQuestion className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {s.name && s.name !== s.handle ? `${s.name} · ` : ""}
+                          {typeof s.followersCount === "number" ? `${s.followersCount.toLocaleString()} followers` : s.reason}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={isAdded ? "secondary" : "outline"}
+                        disabled={isAdded || addingHandle === s.handle}
+                        onClick={() => handleAdd(s)}
+                        className="shrink-0 gap-1"
+                      >
+                        {addingHandle === s.handle ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : isAdded ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Plus className="w-3.5 h-3.5" />
+                        )}
+                        {isAdded ? "Added" : "Add"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+              {!suggestions.every((s) => s.verified) && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 shrink-0" /> Unverified accounts should be double-checked manually before mentioning them in a post.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function MentionLibrary() {
@@ -303,6 +492,7 @@ export default function MentionLibrary() {
   const [isDeletingContact, setIsDeletingContact] = useState(false);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   // Groups state
   const [groups, setGroups] = useState<MentionGroup[]>([]);
@@ -325,6 +515,25 @@ export default function MentionLibrary() {
   }, []);
 
   const categories = getCategories(contacts);
+  const existingHandles = new Set(
+    contacts.flatMap((c) => Object.values(c.handles as Record<string, string>)).filter(Boolean).map((h) => h.toLowerCase().replace(/^@/, "")),
+  );
+
+  const handleAddSuggested = async (data: { displayName: string; category: string; platform: string; handle: string }) => {
+    try {
+      const created = await createContact({
+        displayName: data.displayName,
+        category: data.category,
+        platforms: [data.platform],
+        handles: { [data.platform]: data.handle },
+        linkedinUrn: null,
+      });
+      setContacts((prev) => [...prev, created]);
+      toast({ title: "Contact added", description: `"${data.displayName}" added to your library.` });
+    } catch {
+      toast({ title: "Failed to add contact", variant: "destructive" });
+    }
+  };
 
   // ─── Contact handlers ───────────────────────────────────────────────────────
   const handleSaveContact = async (data: Omit<MentionContact, "id" | "createdAt" | "updatedAt">) => {
@@ -428,9 +637,14 @@ export default function MentionLibrary() {
           </p>
         </div>
         {tab === "contacts" ? (
-          <Button onClick={() => { setEditingContact(undefined); setContactDialogOpen(true); }} className="gap-2">
-            <Plus className="w-4 h-4" /> New Contact
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" onClick={() => setSuggestOpen(true)} className="gap-2">
+              <Sparkles className="w-4 h-4" /> Suggest Accounts
+            </Button>
+            <Button onClick={() => { setEditingContact(undefined); setContactDialogOpen(true); }} className="gap-2">
+              <Plus className="w-4 h-4" /> New Contact
+            </Button>
+          </div>
         ) : (
           <Button onClick={() => { setEditingGroup(undefined); setGroupDialogOpen(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> New Group
@@ -624,6 +838,14 @@ export default function MentionLibrary() {
       <GroupDialog open={groupDialogOpen} initial={editingGroup} contacts={contacts}
         onClose={() => { setGroupDialogOpen(false); setEditingGroup(undefined); }}
         onSave={handleSaveGroup} isSaving={isSavingGroup} />
+
+      <SuggestMentionsDialog
+        open={suggestOpen}
+        category={filterCategory}
+        existingHandles={existingHandles}
+        onClose={() => setSuggestOpen(false)}
+        onAdd={handleAddSuggested}
+      />
 
       <AlertDialog open={!!deleteContactId} onOpenChange={(o) => !o && !isDeletingContact && setDeleteContactId(null)}>
         <AlertDialogContent>

@@ -453,6 +453,66 @@ export async function replyToComment(opts: {
   return { success: true, externalPostId: data.id };
 }
 
+// ─── Business Discovery (public account lookup) ───────────────────────────────
+
+export interface BusinessDiscoveryResult {
+  username: string;
+  name?: string;
+  profilePictureUrl?: string;
+  followersCount?: number;
+}
+
+/**
+ * Look up a public Instagram Business/Creator account by exact username.
+ * Meta does not offer a search/autocomplete endpoint for arbitrary accounts —
+ * this only confirms whether one specific handle exists and is a
+ * business/creator account, returning its public profile info if so.
+ * Requires a connected IG Business account's access token to make the call.
+ * Returns null if the username doesn't exist or isn't a business/creator account.
+ */
+export async function businessDiscovery(opts: {
+  accessToken: string;
+  igUserId: string;
+  targetUsername: string;
+}): Promise<BusinessDiscoveryResult | null> {
+  const cleanUsername = opts.targetUsername.replace(/^@/, "").trim();
+  if (!cleanUsername) return null;
+
+  const url = new URL(`${GRAPH}/${opts.igUserId}`);
+  url.searchParams.set(
+    "fields",
+    `business_discovery.username(${cleanUsername}){username,name,profile_picture_url,followers_count}`,
+  );
+  url.searchParams.set("access_token", opts.accessToken);
+
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+    const data = (await res.json()) as {
+      business_discovery?: {
+        username: string;
+        name?: string;
+        profile_picture_url?: string;
+        followers_count?: number;
+      };
+      error?: { message: string; code: number };
+    };
+
+    if (data.error || !data.business_discovery) {
+      return null;
+    }
+
+    return {
+      username: data.business_discovery.username,
+      name: data.business_discovery.name,
+      profilePictureUrl: data.business_discovery.profile_picture_url,
+      followersCount: data.business_discovery.followers_count,
+    };
+  } catch (err) {
+    logger.warn({ err, targetUsername: cleanUsername }, "Instagram business discovery lookup failed");
+    return null;
+  }
+}
+
 // ─── Account Insights ─────────────────────────────────────────────────────────
 
 export interface IgDailyDataPoint {

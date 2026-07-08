@@ -5,6 +5,8 @@ import { sendSuccess, sendError } from "../utils/response.js";
 import { validateBody } from "../utils/validation.js";
 import { prisma } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
+import { decrypt } from "../utils/crypto.js";
+import { businessDiscovery } from "../adapters/instagram.js";
 
 const getOpenAI = () =>
   new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
@@ -379,6 +381,173 @@ router.post(
     };
 
     sendSuccess(res, { draft, model: "mock", mock: true });
+  },
+);
+
+// ─── POST /api/ai/suggest-hashtags ────────────────────────────────────────────
+// AI brainstorms candidate hashtags for a category/topic, excluding ones
+// already saved in any Hashtag Set. Hashtags are plain text, not accounts, so
+// no external verification is needed or possible.
+const suggestHashtagsSchema = z.object({
+  category: z.string().max(200).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM", "LINKEDIN"]).optional(),
+  count: z.number().int().min(1).max(30).default(15),
+});
+
+router.post(
+  "/suggest-hashtags",
+  validateBody(suggestHashtagsSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof suggestHashtagsSchema>;
+
+    const existingSets = await prisma.hashtagSet.findMany({ select: { hashtags: true } });
+    const existing = new Set(
+      existingSets.flatMap((s) => s.hashtags).map((h) => h.toLowerCase().replace(/^#/, "")),
+    );
+
+    const topic = body.category?.trim() || "marine decking, yacht services, and boating";
+    const platformNote = body.platform ? ` optimised for ${body.platform}` : "";
+
+    const prompt = `You are a social media strategist for a premium marine/yacht services company.
+Suggest ${body.count} relevant, currently-used hashtags about: ${topic}${platformNote}.
+Do not include any of these already-saved hashtags: ${[...existing].slice(0, 100).join(", ") || "(none)"}.
+Reply with ONLY valid JSON (no markdown, no code fences): {"hashtags":["#example1","#example2", ...]}`;
+
+    try {
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 500,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+      const parsed = JSON.parse(raw) as { hashtags?: string[] };
+      const suggestions = (parsed.hashtags ?? [])
+        .map((h) => (h.startsWith("#") ? h : `#${h}`))
+        .filter((h) => !existing.has(h.toLowerCase().replace(/^#/, "")));
+
+      sendSuccess(res, { suggestions, model: "gpt-4o-mini" });
+    } catch (err) {
+      logger.warn({ err }, "AI suggest-hashtags failed");
+      sendError(res, "AI_ERROR", "Failed to generate hashtag suggestions", undefined, 500);
+    }
+  },
+);
+
+// ─── POST /api/ai/suggest-mentions ────────────────────────────────────────────
+// AI brainstorms candidate account names for a category/topic. Meta does not
+// allow searching the general Facebook/Instagram user base, so:
+//   - Instagram: each candidate is verified via Business Discovery (exact
+//     username lookup against a connected IG Business account) before being
+//     returned — only real, existing accounts are surfaced.
+//   - Facebook: there is no equivalent public verification endpoint, so
+//     candidates are returned unverified and clearly flagged as such.
+const suggestMentionsSchema = z.object({
+  category: z.string().max(200).optional(),
+  platform: z.enum(["FACEBOOK", "INSTAGRAM"]),
+  count: z.number().int().min(1).max(15).default(8),
+});
+
+router.post(
+  "/suggest-mentions",
+  validateBody(suggestMentionsSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof suggestMentionsSchema>;
+
+    const existingContacts = await prisma.mentionContact.findMany({ select: { handles: true } });
+    const existingHandles = new Set(
+      existingContacts
+        .flatMap((c) => Object.values((c.handles as Record<string, string>) ?? {}))
+        .filter(Boolean)
+        .map((h) => h.toLowerCase().replace(/^@/, "")),
+    );
+
+    const topic = body.category?.trim() || "marine decking, yachting, and boating industry";
+
+    const prompt = `You are researching real, well-known public ${body.platform === "INSTAGRAM" ? "Instagram" : "Facebook"} accounts (brands, associations, marinas, publications, influencers) relevant to: ${topic}.
+List up to ${body.count} candidate account usernames/handles you believe are real public accounts on this platform. Do not include any of these already-saved handles: ${[...existingHandles].slice(0, 100).join(", ") || "(none)"}.
+Reply with ONLY valid JSON (no markdown, no code fences): {"candidates":[{"handle":"examplehandle","reason":"one short sentence why this account is relevant"}]}`;
+
+    let candidates: Array<{ handle: string; reason?: string }> = [];
+    try {
+      const openai = getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 700,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+      const parsed = JSON.parse(raw) as { candidates?: Array<{ handle: string; reason?: string }> };
+      candidates = (parsed.candidates ?? []).filter(
+        (c) => c.handle && !existingHandles.has(c.handle.toLowerCase().replace(/^@/, "")),
+      );
+    } catch (err) {
+      logger.warn({ err }, "AI suggest-mentions brainstorm failed");
+      sendError(res, "AI_ERROR", "Failed to generate mention suggestions", undefined, 500);
+      return;
+    }
+
+    if (body.platform === "FACEBOOK") {
+      // No public verification endpoint exists for Facebook Pages/profiles —
+      // surface candidates as unverified so the user knows to confirm manually.
+      sendSuccess(res, {
+        suggestions: candidates.map((c) => ({
+          handle: c.handle.replace(/^@/, ""),
+          reason: c.reason,
+          verified: false,
+        })),
+        model: "gpt-4o-mini",
+      });
+      return;
+    }
+
+    // INSTAGRAM: verify each candidate via Business Discovery using a
+    // connected IG account's token — only real accounts are returned.
+    const igAccount = await prisma.socialAccount.findFirst({
+      where: { platform: "INSTAGRAM", connectionStatus: "connected" },
+    });
+    if (!igAccount?.tokenEncrypted) {
+      sendError(
+        res,
+        "NOT_CONNECTED",
+        "No connected Instagram account with a stored token — connect Instagram to verify suggestions.",
+        undefined,
+        422,
+      );
+      return;
+    }
+
+    let accessToken: string;
+    try {
+      accessToken = decrypt(igAccount.tokenEncrypted);
+    } catch {
+      sendError(res, "TOKEN_ERROR", "Stored Instagram token could not be decrypted — reconnect via OAuth", undefined, 422);
+      return;
+    }
+
+    const verified = await Promise.all(
+      candidates.map(async (c) => {
+        const result = await businessDiscovery({
+          accessToken,
+          igUserId: igAccount.accountId,
+          targetUsername: c.handle,
+        });
+        if (!result) return null;
+        return {
+          handle: result.username,
+          name: result.name,
+          profilePictureUrl: result.profilePictureUrl,
+          followersCount: result.followersCount,
+          reason: c.reason,
+          verified: true as const,
+        };
+      }),
+    );
+
+    sendSuccess(res, {
+      suggestions: verified.filter((v): v is NonNullable<typeof v> => v !== null),
+      model: "gpt-4o-mini",
+    });
   },
 );
 

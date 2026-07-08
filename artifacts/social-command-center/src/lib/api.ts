@@ -864,6 +864,39 @@ export async function getAiStatus(): Promise<{
   return result.ok ? result.data : null;
 }
 
+export async function suggestHashtags(body: {
+  category?: string;
+  platform?: string;
+  count?: number;
+}): Promise<{ suggestions: string[] } | { error: string }> {
+  const result = await apiFetch<{ suggestions: string[] }>("/api/ai/suggest-hashtags", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : { error: result.error };
+}
+
+export interface MentionSuggestion {
+  handle: string;
+  name?: string;
+  profilePictureUrl?: string;
+  followersCount?: number;
+  reason?: string;
+  verified: boolean;
+}
+
+export async function suggestMentions(body: {
+  category?: string;
+  platform: "FACEBOOK" | "INSTAGRAM";
+  count?: number;
+}): Promise<{ suggestions: MentionSuggestion[] } | { error: string }> {
+  const result = await apiFetch<{ suggestions: MentionSuggestion[] }>("/api/ai/suggest-mentions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : { error: result.error };
+}
+
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 

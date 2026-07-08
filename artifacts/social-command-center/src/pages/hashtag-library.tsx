@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Hash, Plus, Pencil, Trash2, X, Check, Loader2 } from "lucide-react";
+import { Hash, Plus, Pencil, Trash2, X, Check, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
   validateHashtag, parseHashtags,
   type HashtagSet,
 } from "@/lib/hashtagStore";
+import { suggestHashtags } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 
 const ALL_PLATFORMS = ["Facebook", "Instagram", "LinkedIn"];
@@ -198,6 +199,169 @@ function SetDialog({
   );
 }
 
+function SuggestHashtagsDialog({
+  open,
+  sets,
+  onClose,
+  onAddToSet,
+  onCreateSet,
+}: {
+  open: boolean;
+  sets: HashtagSet[];
+  onClose: () => void;
+  onAddToSet: (setId: string, hashtags: string[]) => Promise<void>;
+  onCreateSet: (name: string, hashtags: string[]) => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [category, setCategory] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [targetSetId, setTargetSetId] = useState("");
+  const [newSetName, setNewSetName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setCategory("");
+      setSuggestions([]);
+      setSelected([]);
+      setTargetSetId("");
+      setNewSetName("");
+    }
+  }, [open]);
+
+  const handleGenerate = async () => {
+    setIsLoading(true);
+    setSuggestions([]);
+    setSelected([]);
+    try {
+      const result = await suggestHashtags({ category: category.trim() || undefined, count: 15 });
+      if ("error" in result) {
+        toast({ title: "Couldn't generate suggestions", description: result.error, variant: "destructive" });
+        return;
+      }
+      setSuggestions(result.suggestions);
+      setSelected(result.suggestions);
+      if (result.suggestions.length === 0) {
+        toast({ title: "No new suggestions", description: "AI couldn't find hashtags not already in your library." });
+      }
+    } catch {
+      toast({ title: "Couldn't generate suggestions", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggle = (tag: string) =>
+    setSelected((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+
+  const handleSave = async () => {
+    if (selected.length === 0) return;
+    setIsSaving(true);
+    try {
+      if (targetSetId) {
+        await onAddToSet(targetSetId, selected);
+      } else {
+        if (!newSetName.trim()) return;
+        await onCreateSet(newSetName.trim(), selected);
+      }
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const canSave = selected.length > 0 && (targetSetId || newSetName.trim().length > 0) && !isSaving;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !isSaving && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4" /> Suggest Hashtags</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Topic / Category (optional)</label>
+            <div className="flex gap-2">
+              <Input
+                placeholder='e.g. "teak decking" or "sport fishing"'
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
+              <Button type="button" onClick={handleGenerate} disabled={isLoading} className="gap-1.5 shrink-0">
+                {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                Generate
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              AI suggests hashtags not already saved in your library. Hashtags don't need verification.
+            </p>
+          </div>
+
+          {suggestions.length > 0 && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Suggestions ({selected.length} selected)</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map((tag) => {
+                    const isSelected = selected.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggle(tag)}
+                        className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border transition-colors ${
+                          isSelected
+                            ? "bg-primary/10 text-primary border-primary"
+                            : "bg-muted/50 text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3" />}
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Add to</label>
+                {sets.length > 0 && (
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    value={targetSetId}
+                    onChange={(e) => setTargetSetId(e.target.value)}
+                  >
+                    <option value="">Create a new set…</option>
+                    {sets.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                )}
+                {!targetSetId && (
+                  <Input
+                    placeholder='New set name, e.g. "AI Suggested"'
+                    value={newSetName}
+                    onChange={(e) => setNewSetName(e.target.value)}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
+          <Button disabled={!canSave} onClick={handleSave}>
+            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+            Add {selected.length > 0 ? selected.length : ""} Hashtag{selected.length !== 1 ? "s" : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function HashtagLibrary() {
   const { toast } = useToast();
   const [sets, setSets] = useState<HashtagSet[]>([]);
@@ -208,6 +372,7 @@ export default function HashtagLibrary() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [search, setSearch] = useState("");
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   useEffect(() => {
     loadSets()
@@ -253,6 +418,29 @@ export default function HashtagLibrary() {
     }
   };
 
+  const handleAddSuggestedToSet = async (setId: string, hashtags: string[]) => {
+    const target = sets.find((s) => s.id === setId);
+    if (!target) return;
+    const merged = [...target.hashtags, ...hashtags.filter((h) => !target.hashtags.includes(h))];
+    try {
+      const updated = await updateSet(setId, { name: target.name, platforms: target.platforms, hashtags: merged });
+      setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      toast({ title: "Hashtags added", description: `Added to "${target.name}".` });
+    } catch {
+      toast({ title: "Failed to add hashtags", variant: "destructive" });
+    }
+  };
+
+  const handleCreateSuggestedSet = async (name: string, hashtags: string[]) => {
+    try {
+      const created = await createSet({ name, platforms: [], hashtags });
+      setSets((prev) => [...prev, created]);
+      toast({ title: "Set created", description: `"${name}" added to your library.` });
+    } catch {
+      toast({ title: "Failed to create set", variant: "destructive" });
+    }
+  };
+
   const filtered = search
     ? sets.filter(
         (s) =>
@@ -270,9 +458,14 @@ export default function HashtagLibrary() {
             Save and organise hashtag sets for quick reuse across platforms.
           </p>
         </div>
-        <Button onClick={() => { setEditing(undefined); setDialogOpen(true); }} className="gap-2">
-          <Plus className="w-4 h-4" /> New Set
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setSuggestOpen(true)} className="gap-2">
+            <Sparkles className="w-4 h-4" /> Suggest Hashtags
+          </Button>
+          <Button onClick={() => { setEditing(undefined); setDialogOpen(true); }} className="gap-2">
+            <Plus className="w-4 h-4" /> New Set
+          </Button>
+        </div>
       </div>
 
       <Input
@@ -358,6 +551,14 @@ export default function HashtagLibrary() {
         onClose={() => { setDialogOpen(false); setEditing(undefined); }}
         onSave={handleSave}
         isSaving={isSaving}
+      />
+
+      <SuggestHashtagsDialog
+        open={suggestOpen}
+        sets={sets}
+        onClose={() => setSuggestOpen(false)}
+        onAddToSet={handleAddSuggestedToSet}
+        onCreateSet={handleCreateSuggestedSet}
       />
 
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && !isDeleting && setDeleteId(null)}>
