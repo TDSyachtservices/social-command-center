@@ -33,10 +33,9 @@ export function MentionsTextarea({ platform, value, onChange, placeholder, class
   }, [value]);
 
   const fetchMentions = (query: string, callback: (data: SuggestionDataItem[]) => void) => {
-    if (!query) {
-      callback([]);
-      return;
-    }
+    // An empty query means the user just typed the trigger "@" and hasn't
+    // narrowed it down yet — show every eligible contact instead of nothing,
+    // matching the "type @ and see a dropdown immediately" expectation.
     loadContacts()
       .then((contacts: MentionContact[]) => {
         const q = query.toLowerCase();
@@ -44,6 +43,7 @@ export function MentionsTextarea({ platform, value, onChange, placeholder, class
           .filter((c) => contactHasHandle(c, platform))
           .filter(
             (c) =>
+              !q ||
               c.displayName.toLowerCase().includes(q) ||
               (getHandleForPlatform(c, platform) ?? "").toLowerCase().includes(q)
           )
