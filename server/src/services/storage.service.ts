@@ -100,9 +100,15 @@ function buildObjectKey(contentType: string): string {
 }
 
 export function buildPublicUrl(key: string): string {
-  const base = (process.env.S3_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+  let base = (process.env.S3_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
   if (!base) {
     throw badRequest("Object storage is not configured — set S3_PUBLIC_BASE_URL.");
+  }
+  // S3_PUBLIC_BASE_URL is sometimes set as a bare domain (no scheme) in Railway's
+  // dashboard — default to https:// so downstream consumers (browsers, Facebook's
+  // fetcher) get a usable absolute URL rather than a scheme-relative string.
+  if (!/^https?:\/\//i.test(base)) {
+    base = `https://${base}`;
   }
   return `${base}/${key}`;
 }
