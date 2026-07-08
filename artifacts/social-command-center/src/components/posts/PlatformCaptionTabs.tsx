@@ -1,10 +1,17 @@
 import { Platform } from "@/data/mockPosts";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Textarea } from "@/components/ui/textarea";
+import { MentionsTextarea } from "@/components/posts/MentionsTextarea";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Bot, AlertTriangle, Info } from "lucide-react";
 import { HASHTAG_RULES } from "@/lib/hashtagStore";
+
+// Inline @mention autocomplete (react-mentions) is only wired up for
+// Instagram and Facebook so far — those are the platforms with a simple
+// "@username" mention format. LinkedIn mentions can be a URN instead of a
+// handle, so it keeps the plain textarea + "Browse Contacts" flow for now.
+const MENTION_AUTOCOMPLETE_PLATFORMS: Platform[] = ["Instagram", "Facebook"];
 
 interface PlatformCaptionTabsProps {
   platforms: Platform[];
@@ -84,12 +91,22 @@ export function PlatformCaptionTabs({
                 </div>
               </div>
 
-              <Textarea
-                placeholder={`Write a caption for ${platform}...`}
-                className="min-h-[120px]"
-                value={caption}
-                onChange={(e) => onChange(platform, e.target.value)}
-              />
+              {MENTION_AUTOCOMPLETE_PLATFORMS.includes(platform) ? (
+                <MentionsTextarea
+                  platform={platform}
+                  placeholder={`Write a caption for ${platform}... (type @ to mention)`}
+                  className="min-h-[120px]"
+                  value={caption}
+                  onChange={(v) => onChange(platform, v)}
+                />
+              ) : (
+                <Textarea
+                  placeholder={`Write a caption for ${platform}...`}
+                  className="min-h-[120px]"
+                  value={caption}
+                  onChange={(e) => onChange(platform, e.target.value)}
+                />
+              )}
 
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">

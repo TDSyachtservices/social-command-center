@@ -9,8 +9,14 @@ export interface HashtagSet {
 
 const BASE = "/api/hashtag-sets";
 
+// The backend is a standalone server (not proxied under this app's own
+// origin), so every request must be prefixed with VITE_API_BASE_URL — a bare
+// relative path silently resolves against this app's own dev/preview origin
+// instead and 404s. Mirrors the pattern in lib/api.ts.
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
