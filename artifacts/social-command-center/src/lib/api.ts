@@ -667,6 +667,75 @@ export async function uploadFile(
   return result.ok ? result.data : null;
 }
 
+export interface PresignedUploadUrlResult {
+  uploadUrl: string;
+  key: string;
+  publicUrl: string;
+}
+
+/** Ask the server for a presigned R2 PUT URL for this file's content type/size. */
+export async function getUploadUrl(file: File): Promise<PresignedUploadUrlResult | null> {
+  const result = await apiFetch<PresignedUploadUrlResult>("/api/media/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface ConfirmUploadResult {
+  assetId: string;
+  originalUrl: string;
+}
+
+/** Tell the server an upload to R2 finished, so it can persist a MediaAsset row. */
+export async function confirmUpload(body: {
+  key: string;
+  publicUrl: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  originalWidth?: number;
+  originalHeight?: number;
+  originalDurationSeconds?: number;
+}): Promise<ConfirmUploadResult | null> {
+  const result = await apiFetch<ConfirmUploadResult>("/api/media/confirm", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+/**
+ * Upload a file directly to R2 via a presigned URL, bypassing our server for
+ * the file bytes (important for video — large files never touch our request
+ * body or count against its JSON size limit). Confirms with the server once
+ * the PUT succeeds so a MediaAsset row only gets created for uploads that
+ * actually completed.
+ */
+export async function uploadViaPresignedUrl(
+  file: File,
+  extras?: { originalWidth?: number; originalHeight?: number; originalDurationSeconds?: number },
+): Promise<ConfirmUploadResult | null> {
+  const presigned = await getUploadUrl(file);
+  if (!presigned) return null;
+
+  const putRes = await fetch(presigned.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!putRes.ok) return null;
+
+  return confirmUpload({
+    key: presigned.key,
+    publicUrl: presigned.publicUrl,
+    fileName: file.name,
+    mimeType: file.type,
+    fileSizeBytes: file.size,
+    ...extras,
+  });
+}
+
 // ─── AI ───────────────────────────────────────────────────────────────────────
 
 export async function generateCaption(body: {

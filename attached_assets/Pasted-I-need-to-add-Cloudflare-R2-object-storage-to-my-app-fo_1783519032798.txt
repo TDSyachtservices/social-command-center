@@ -1,0 +1,56 @@
+I need to add Cloudflare R2 object storage to my app for handling photo and 
+video uploads. This is a Node.js/TypeScript/Express/Prisma backend with a 
+React frontend, used for a social media posting app (Facebook, Instagram, 
+LinkedIn). Media needs to be publicly fetchable by URL since these platforms' 
+publish APIs pull media from a URL rather than accepting direct binary uploads.
+
+Requirements:
+
+1. Install @aws-sdk/client-s3 and @aws-sdk/s3-request-presigner. R2 is 
+   S3-compatible, so use the standard S3 client pointed at the R2 endpoint.
+
+2. Add these environment variables (I'll set the actual values as secrets):
+   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, 
+   R2_PUBLIC_URL (the custom domain serving the bucket publicly)
+
+3. Create a storage service module that:
+   - Initializes the S3 client with endpoint 
+     https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+   - Exposes a function to generate a presigned PUT URL for uploading, with a 
+     5-minute expiry, that accepts a filename and content type and returns 
+     both the upload URL and the object key (use a UUID + original extension 
+     for the key, don't trust client-supplied filenames)
+   - Exposes a function to build the public URL for a given object key using 
+     R2_PUBLIC_URL
+   - Validates content type against an allowlist (image/jpeg, image/png, 
+     image/webp, video/mp4, video/quicktime) and rejects anything else before 
+     issuing a presigned URL
+
+4. Add an Express route POST /api/media/upload-url that takes { filename, 
+   contentType, size } in the body, validates size against a limit (100MB for 
+   video, 10MB for images), and returns { uploadUrl, key, publicUrl }.
+
+5. Add a Prisma model called MediaAsset with fields: id (uuid), key (string, 
+   unique), url (string), mimeType (string), sizeBytes (int), createdAt 
+   (datetime), and an optional relation to whatever your Post/content model 
+   is called. Run the migration.
+
+6. Add a second route POST /api/media/confirm that takes the object key plus 
+   metadata and creates the MediaAsset record — call this after the client 
+   finishes the direct upload to R2, so we only persist a database record for 
+   uploads that actually completed.
+
+7. On the frontend, add a reusable upload hook/function that: requests the 
+   presigned URL from /api/media/upload-url, PUTs the file directly to that 
+   URL with fetch (not through our backend), then calls /api/media/confirm 
+   on success. Show upload progress if straightforward with the current 
+   setup, otherwise a simple loading state is fine.
+
+8. Never expose R2_ACCESS_KEY_ID or R2_SECRET_ACCESS_KEY to the frontend — 
+   they should only be used server-side to sign URLs.
+
+9. Add a .env.example entry for the new variables and a short note in the 
+   README about creating the R2 bucket and binding a custom domain to it.
+
+Keep changes scoped to what's listed above — don't refactor unrelated parts 
+of the upload or posting flow. Show me the diff before running any migration.

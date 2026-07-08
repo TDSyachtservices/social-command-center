@@ -1,0 +1,19 @@
+Quick check — by "KPIs for my app," do you mean Page/post insights (reach, engagement, impressions) for your Social Media Dashboard, or something else like ad performance metrics? I'll assume Page/post insights via the Graph API since that fits what you've been building, but let me pull current endpoint info since Meta changes these fairly often.Considered integrating Instagram Graph API alongside Facebook endpointsConsidered integrating Instagram Graph API alongside Facebook endpointsGiven the current API version (v25.0) and your Social Media Dashboard setup, here's the breakdown:
+Page-level KPIs
+Endpoint:
+GET https://graph.facebook.com/v25.0/{page-id}/insights?metric={metric-1},{metric-2}&access_token={page-access-token}
+Common metrics: page_impressions_unique, page_engaged_users, page_post_engagements, page_actions_post_reactions_total.
+Requires: a Page Access Token with the analyze task, plus pages_read_engagement and read_insights permissions.
+Post-level KPIs
+Endpoint:
+GET https://graph.facebook.com/v25.0/{page-post-id}/insights?metric={metric-1},{metric-2}&access_token={page-access-token}
+Common metrics: post_impressions, post_engaged_users, post_reactions_like_total, post_reactions_love_total, post_clicks.
+Important — heads up on breaking changes
+A few things worth flagging since you're actively building on this:
+
+A number of Page Insights metrics are being deprecated across all API versions by June 15, 2026 — if you're already live, check your metric list against the deprecation notice. Facebook Developers
+Reach-based metrics (Post/Page Reach, Video Impressions, Story Impressions, 3-second Viewers) are being deprecated in June 2026 in favor of new Media Views and Media Viewers metrics, with a broader Page Viewer Metric replacing the legacy reach metric across Facebook and Instagram. Swipe Insight
+Graph API v19 will be deprecated on May 21, 2026, and v20 on September 24, 2026 — worth confirming which version your dashboard currently targets. Swipe Insight
+If you're on webhooks (which you are, for DMs/comments), Meta requires updating trust stores to a new internal Certificate Authority by March 31, 2026, or webhook TLS handshakes will start failing — worth double-checking this got handled given the timing. Swipe Insight
+
+One clarifying note: if you're pulling metrics for Instagram Business accounts through the same dashboard, that's a separate /{ig-user-id}/insights endpoint with its own metric set (impressions, reach, profile_views, etc.) — different from the Page endpoints above. Want me to pull the current Instagram Insights endpoint details too, or were you specifically asking about Facebook Page/post KPIs?

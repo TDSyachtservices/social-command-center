@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { UploadCloud, Image as ImageIcon, X, ChevronDown, ChevronUp, Library, Film } from "lucide-react";
-import { uploadMediaIntent, uploadFile } from "@/lib/api";
+import { uploadMediaIntent, uploadFile, uploadViaPresignedUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Link } from "wouter";
@@ -128,14 +128,6 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
       const dims = await measureDimensions(file);
       setDimensions(dims);
 
-      const result = await uploadMediaIntent({
-        fileName: file.name,
-        mimeType: file.type,
-        fileSizeBytes: file.size,
-        originalWidth: dims.width || undefined,
-        originalHeight: dims.height || undefined,
-      });
-
       const blobUrl = URL.createObjectURL(file);
       const mediaType = file.type.startsWith("video/") ? "video" : "image";
       setPreview(blobUrl);
@@ -146,6 +138,62 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
       // real, permanent server URL as soon as the upload finishes. Submitting the
       // post before that swap happens must be blocked (see onUploadPendingChange).
       onMediaSelect(blobUrl, mediaType);
+
+      if (mediaType === "video") {
+        // Videos upload directly to R2 via a presigned URL — the bytes never
+        // pass through our server. This is awaited (not fire-and-forget) so we
+        // can replace the temporary blob URL with the real, durable one — and
+        // block publishing until that happens (see onUploadPendingChange).
+        setIsPersisting(true);
+        onUploadPendingChange?.(true);
+        toast({ title: "Uploading video…", description: "This may take a moment for larger files." });
+        try {
+          const confirmed = await uploadViaPresignedUrl(file, {
+            originalWidth: dims.width || undefined,
+            originalHeight: dims.height || undefined,
+          });
+          if (confirmed && confirmed.originalUrl) {
+            setPreview(confirmed.originalUrl);
+            onMediaSelect(confirmed.originalUrl, mediaType);
+            saveToMediaLibrary({
+              id: confirmed.assetId,
+              originalFileName: file.name,
+              originalFileType: mediaType,
+              originalSizeBytes: file.size,
+              originalWidth: dims.width,
+              originalHeight: dims.height,
+              previewUrl: confirmed.originalUrl,
+            });
+            toast({ title: "Video uploaded", description: `${file.name} saved to durable storage.` });
+          } else {
+            setUploadFailed(true);
+            toast({
+              title: "Upload failed",
+              description: `${file.name} could not be saved to storage. Remove it and try again before publishing.`,
+              variant: "destructive",
+            });
+          }
+        } catch {
+          setUploadFailed(true);
+          toast({
+            title: "Upload failed",
+            description: `${file.name} could not be saved to storage. Remove it and try again before publishing.`,
+            variant: "destructive",
+          });
+        } finally {
+          setIsPersisting(false);
+          onUploadPendingChange?.(false);
+        }
+        return;
+      }
+
+      const result = await uploadMediaIntent({
+        fileName: file.name,
+        mimeType: file.type,
+        fileSizeBytes: file.size,
+        originalWidth: dims.width || undefined,
+        originalHeight: dims.height || undefined,
+      });
 
       if (result) {
         saveToMediaLibrary({

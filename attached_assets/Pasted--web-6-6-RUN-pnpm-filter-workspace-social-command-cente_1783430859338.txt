@@ -1,0 +1,50 @@
+[web 6/6] RUN pnpm --filter @workspace/social-command-center run build
+
+
+> @workspace/social-command-center@0.0.0 build /repo/artifacts/social-command-center
+> vite build --config vite.config.ts
+
+
+vite v7.3.3 building client environment for production...
+
+transforming...
+
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+
+src/components/ui/select.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+
+src/components/ui/sheet.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+
+src/components/ui/calendar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+
+src/components/ui/label.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+
+✓ 3759 modules transformed.
+
+✗ Build failed in 4.67s
+
+error during build:
+src/pages/kpi.tsx (18:48): "getInstagramInsights" is not exported by "src/lib/api.ts", imported by "src/pages/kpi.tsx".
+file: /repo/artifacts/social-command-center/src/pages/kpi.tsx:18:48
+
+16: } from "lucide-react";
+17: import {
+18:   listAccounts, listPosts, getFacebookInsights, getInstagramInsights,
+                                                    ^
+19:   type ApiAccount, type ApiPost, type ApiFacebookInsights, type ApiInstagramInsights,
+20: } from "@/lib/api";
+
+    at getRollupError (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/parseAst.js:406:41)
+    at error (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/parseAst.js:402:42)
+    at Module.error (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:17390:16)
+    at Module.traceVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:17823:29)
+    at ModuleScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:15413:39)
+    at FunctionScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:5682:38)
+    at FunctionBodyScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:5682:38)
+    at ReturnValueScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:5682:38)
+    at FunctionBodyScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:5682:38)
+    at ReturnValueScope.findVariable (file:///repo/node_modules/.pnpm/rollup@4.60.3/node_modules/rollup/dist/es/shared/node-entry.js:5682:38)
+
+/repo/artifacts/social-command-center:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/social-command-center@0.0.0 build: `vite build --config vite.config.ts`
+Exit status 1

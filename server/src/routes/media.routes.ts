@@ -16,6 +16,11 @@ import {
   type ProcessedVersion,
 } from "../services/media-processor.js";
 import { logger } from "../utils/logger.js";
+import {
+  createPresignedUpload,
+  putObjectBuffer,
+  isObjectStorageConfigured,
+} from "../services/storage.service.js";
 
 const router = Router();
 
@@ -57,7 +62,7 @@ async function persistVersions(
   const publicBase = buildPublicBase();
   await prisma.mediaVersion.deleteMany({ where: { mediaAssetId: assetId } });
 
-  return Promise.all(
+  const rows = await Promise.all(
     versions.map((v) => {
       const fileName = path.basename(v.outputPath);
       const { score, label } = scoreQuality(srcWidth, srcHeight, v.spec);
@@ -88,6 +93,32 @@ async function persistVersions(
       });
     }),
   );
+
+  // Best-effort: also push each version to durable R2 storage and point
+  // publicUrl there instead of the local (ephemeral-on-redeploy) disk path.
+  // storageKey stays a local path — focal-point re-cropping and /process still
+  // need the file on disk to re-run ImageMagick. A failed R2 push here just
+  // means that version falls back to serving from local disk, same as before
+  // this feature existed; it never fails the whole upload.
+  if (isObjectStorageConfigured()) {
+    await Promise.all(
+      versions.map(async (v, idx) => {
+        try {
+          const buffer = fs.readFileSync(v.outputPath);
+          const { publicUrl } = await putObjectBuffer(buffer, v.spec.mimeType);
+          await prisma.mediaVersion.update({
+            where: { id: rows[idx].id },
+            data: { publicUrl },
+          });
+          rows[idx] = { ...rows[idx], publicUrl };
+        } catch (err) {
+          logger.warn({ err, versionId: rows[idx].id }, "Failed to push media version to R2 — falling back to local disk URL");
+        }
+      }),
+    );
+  }
+
+  return rows;
 }
 
 const listQuerySchema = z.object({
@@ -207,6 +238,74 @@ router.post(
   },
 );
 
+// ─── POST /api/media/upload-url ───────────────────────────────────────────────
+// Issues a presigned R2 PUT URL the browser uploads directly to (bypassing this
+// server for the file bytes). Used for direct-attach uploads, primarily video —
+// large files never touch our request body. Validates content type + size
+// before signing anything.
+const uploadUrlSchema = z.object({
+  filename: z.string().min(1).max(260),
+  contentType: z.string().min(1),
+  size: z.number().int().positive(),
+});
+
+router.post(
+  "/upload-url",
+  validateBody(uploadUrlSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof uploadUrlSchema>;
+    const { uploadUrl, key, publicUrl } = await createPresignedUpload(body.contentType, body.size);
+    sendSuccess(res, { uploadUrl, key, publicUrl });
+  },
+);
+
+// ─── POST /api/media/confirm ───────────────────────────────────────────────────
+// Called by the client AFTER it finishes PUTting the file directly to R2, so we
+// only ever persist a MediaAsset record for uploads that actually completed.
+const confirmUploadSchema = z.object({
+  key: z.string().min(1),
+  publicUrl: z.string().min(1),
+  fileName: z.string().min(1).max(260),
+  mimeType: z.string().min(1),
+  fileSizeBytes: z.number().int().positive(),
+  originalWidth: z.number().int().positive().optional(),
+  originalHeight: z.number().int().positive().optional(),
+  originalDurationSeconds: z.number().positive().optional(),
+  uploadedBy: z.string().optional(),
+});
+
+router.post(
+  "/confirm",
+  validateBody(confirmUploadSchema),
+  async (req: Request, res: Response) => {
+    const body = req.body as z.infer<typeof confirmUploadSchema>;
+
+    const asset = await prisma.mediaAsset.create({
+      data: {
+        originalFileName: body.fileName,
+        originalFileType: body.mimeType.startsWith("video") ? "video" : "image",
+        originalMimeType: body.mimeType,
+        originalSizeBytes: BigInt(body.fileSizeBytes),
+        originalWidth: body.originalWidth ?? null,
+        originalHeight: body.originalHeight ?? null,
+        originalDurationSeconds: body.originalDurationSeconds ?? null,
+        originalStorageKey: body.key,
+        originalPublicUrl: body.publicUrl,
+        uploadedBy: body.uploadedBy ?? null,
+        processingStatus: "READY",
+        validationStatus: "NEEDS_REVIEW",
+      },
+    });
+
+    sendSuccess(
+      res,
+      { assetId: asset.id, originalUrl: asset.originalPublicUrl },
+      undefined,
+      201,
+    );
+  },
+);
+
 // ─── POST /api/media/:id/upload-file ─────────────────────────────────────────
 // Accepts the raw file as a base64-encoded JSON body, runs ImageMagick to
 // produce per-platform resizes, persists MediaVersion records, and returns
@@ -251,9 +350,23 @@ router.post(
     const publicBase = railwayDomain
       ? `https://${railwayDomain}`
       : (process.env.API_BASE_URL ?? "").replace(/\/$/, "");
-    const originalUrl = publicBase
+    const localOriginalUrl = publicBase
       ? `${publicBase}/api/uploads/${id}/original.${ext}`
       : `/api/uploads/${id}/original.${ext}`;
+
+    // Push the original to durable R2 storage when configured, and prefer that
+    // URL — local disk is wiped on every Railway redeploy, which is exactly
+    // the bug this feature fixes (most critical for video, since it's never
+    // reprocessed and so has no other chance to land in durable storage).
+    let originalUrl = localOriginalUrl;
+    if (isObjectStorageConfigured()) {
+      try {
+        const { publicUrl } = await putObjectBuffer(fileBuffer, body.mimeType);
+        originalUrl = publicUrl;
+      } catch (err) {
+        logger.warn({ err, assetId: id }, "Failed to push original to R2 — falling back to local disk URL");
+      }
+    }
 
     await prisma.mediaAsset.update({
       where: { id },

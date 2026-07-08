@@ -1,8 +1,11 @@
 - [Railway build context & builder](railway-build-context.md) — deploys `main` via dashboard Builder=Dockerfile (overrides railway.json); rootDirectory=/server so Dockerfile COPY paths must be UNPREFIXED.
+- [Railway single-image full-stack deploy](railway-fullstack-deploy.md) — one Railway service serves SPA+API from one domain via root Dockerfile; web stage MUST be glibc; see topic for build/cutover constraints.
+- [CORS crossorigin asset 500](cors-crossorigin-asset-500.md) — throwing in the CORS origin cb 500s ALL responses incl. crossorigin JS/CSS → blank SPA; allow the app's own origin, use cb(null,false).
 - [GitHub repo](github-repo.md) — TDSyachtservices/social-command-center; push via direct URL (no remote in config); branch creation via GitHub API only
 - [GitHub push method](github-push.md) — git add/commit blocked in main agent; use GitHub Git Data API via node script with GITHUB_PERSONAL_ACCESS_TOKEN env var (blobs → tree → commit → patch ref).
 - [Server backend structure](server-backend.md) — standalone /server dir (not in pnpm workspace); Express 5 + Prisma + PostgreSQL; deploys to Railway with Dockerfile + railway.toml.
-- [Social adapter contract](adapter-contract.md) — adapters export getCapabilities/publishPost/getComments/replyToComment; Facebook AND Instagram are REAL publishers (IG = 2-step container, media REQUIRED); LinkedIn/TikTok still skipped.
+- [Dual backend parity](dual-backend-parity.md) — two separate backends (dev=Drizzle api-server, prod=Prisma /server); a route/model added to only one works in dev but 404s in prod — port to both.
+- [Social adapter contract](adapter-contract.md) — all platform adapters must export getCapabilities/publishPost/getComments/replyToComment; Facebook, Instagram, LinkedIn adapters are all REAL (OAuth + platform APIs) as of July 2026.
 - [Facebook posting permissions](facebook-posting-permissions.md) — posting needs pages_manage_posts (Business app only); changing the FB app does NOT refresh the stored page token — user must reconnect.
 - [Instagram scopes (FB-login path)](instagram-scopes-fb-login.md) — use instagram_basic/* NOT instagram_business_*; "Invalid Scopes" = Meta app missing the Instagram product, not a code bug.
 - [Post platform/account mapping](post-platform-account-mapping.md) — never pair `platforms`/`accountIds` positionally; derive each platform row from an account of the same platform or you cross-post.
@@ -12,3 +15,7 @@
 - [ImageMagick Alpine codecs](imagemagick-alpine-codecs.md) — base `imagemagick` apk lacks JPEG/WebP; install codec subpackages or get "no decode delegate".
 - [Railway ephemeral uploads](railway-ephemeral-uploads.md) — /app/uploads wiped on every redeploy unless a Railway Volume is mounted; media must be re-uploaded.
 - [Media optimizer focal crop & AI score](media-focal-crop.md) — preview must mirror the server's focal-as-centre crop (not CSS object-position); a re-crop invalidates the AI score, so block crop edits while scoring.
+- [Active platforms](active-platforms.md) — TikTok and Website/CMS removed entirely (July 2026); only FACEBOOK, INSTAGRAM, LINKEDIN remain in server enums and frontend UI.
+- [Meta Graph API version & metrics](meta-graph-api-insights.md) — use v21+; fetch insights metrics individually (bundled calls fail if any one is invalid); see topic file for working FB/IG metric names.
+- [ImageMagick multi-frame inputs](imagemagick-multiframe.md) — animated GIF → single-still convert needs `input[0]` or it writes out-0, out-1... and single-path stat fails.
+- [Never persist blob: preview URLs](blob-url-persistence.md) — direct-attach uploads must swap blob: URL for the real server URL before save, or platform publish fetch fails silently.
