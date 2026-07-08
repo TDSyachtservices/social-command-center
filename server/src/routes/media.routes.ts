@@ -20,6 +20,8 @@ import {
   createPresignedUpload,
   putObjectBuffer,
   isObjectStorageConfigured,
+  deleteObject,
+  keyFromPublicUrl,
 } from "../services/storage.service.js";
 
 const router = Router();
@@ -632,10 +634,93 @@ router.patch(
 );
 
 // ─── DELETE /api/media/:id ────────────────────────────────────────────────────
+// Deleting a MediaAsset cascades to its MediaVersion + ProcessingJob rows in
+// the DB (onDelete: Cascade in schema.prisma), but posts store a plain
+// `mediaUrl` string snapshot rather than a foreign key to MediaAsset/
+// MediaVersion — so a scheduled/published post can still be pointing at a
+// URL we're about to delete from R2. Before purging any R2 object, check
+// whether its URL is still referenced by a post or comment; if so, leave
+// that object in R2 (it becomes untracked-but-harmless storage) and warn the
+// caller instead of silently breaking that post's media.
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
-  const asset = await prisma.mediaAsset.findUnique({ where: { id } });
+  const asset = await prisma.mediaAsset.findUnique({
+    where: { id },
+    include: { versions: true },
+  });
   if (!asset) throw notFound("MediaAsset", id);
+
+  const candidateUrls = [
+    asset.originalPublicUrl,
+    ...asset.versions.map((v) => v.publicUrl),
+  ].filter((u): u is string => Boolean(u));
+
+  const warnings: string[] = [];
+  let urlsInUse = new Set<string>();
+
+  if (candidateUrls.length > 0) {
+    const [postMatches, platformMatches, commentMatches] = await Promise.all([
+      prisma.scheduledPost.findMany({
+        where: {
+          OR: [
+            { mediaUrl: { in: candidateUrls } },
+            { additionalMediaUrls: { hasSome: candidateUrls } },
+          ],
+        },
+        select: { id: true, title: true, mediaUrl: true, additionalMediaUrls: true },
+      }),
+      prisma.scheduledPostPlatform.findMany({
+        where: {
+          OR: [
+            { mediaUrl: { in: candidateUrls } },
+            { additionalMediaUrls: { hasSome: candidateUrls } },
+          ],
+        },
+        select: { id: true, scheduledPostId: true, mediaUrl: true, additionalMediaUrls: true },
+      }),
+      prisma.socialComment.findMany({
+        where: { mediaUrl: { in: candidateUrls } },
+        select: { id: true, mediaUrl: true },
+      }),
+    ]);
+
+    for (const p of postMatches) {
+      if (p.mediaUrl) urlsInUse.add(p.mediaUrl);
+      for (const u of p.additionalMediaUrls) urlsInUse.add(u);
+    }
+    for (const p of platformMatches) {
+      if (p.mediaUrl) urlsInUse.add(p.mediaUrl);
+      for (const u of p.additionalMediaUrls) urlsInUse.add(u);
+    }
+    for (const c of commentMatches) {
+      if (c.mediaUrl) urlsInUse.add(c.mediaUrl);
+    }
+    urlsInUse = new Set([...urlsInUse].filter((u) => candidateUrls.includes(u)));
+
+    if (urlsInUse.size > 0) {
+      const postTitles = [...new Set(postMatches.map((p) => p.title))];
+      warnings.push(
+        `Kept ${urlsInUse.size} file(s) in object storage because they're still referenced by ` +
+          `${postMatches.length + platformMatches.length} post(s)${
+            postTitles.length ? ` (${postTitles.join(", ")})` : ""
+          }${commentMatches.length ? ` and ${commentMatches.length} comment(s)` : ""}.`,
+      );
+    }
+  }
+
+  if (isObjectStorageConfigured()) {
+    for (const url of candidateUrls) {
+      if (urlsInUse.has(url)) continue;
+      const key = keyFromPublicUrl(url);
+      if (!key) continue;
+      try {
+        await deleteObject(key);
+      } catch (err) {
+        logger.warn({ err, id, key }, "Failed to delete object from R2 on media delete");
+      }
+    }
+  }
+
   await prisma.mediaAsset.delete({ where: { id } }); // versions + jobs cascade
 
   // Remove the on-disk files for this asset (best effort).
@@ -645,7 +730,7 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
     logger.warn({ err, id }, "Failed to remove upload directory on delete");
   }
 
-  sendSuccess(res, { deleted: true });
+  sendSuccess(res, { deleted: true, warnings: warnings.length ? warnings : undefined });
 });
 
 // ─── POST /api/media/:id/duplicate ────────────────────────────────────────────

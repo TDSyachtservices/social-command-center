@@ -171,4 +171,20 @@ export async function deleteObject(key: string): Promise<void> {
   await client.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
 }
 
+/**
+ * Given a URL we previously handed out via buildPublicUrl, recover the R2
+ * object key so we can delete it. Returns null if the URL doesn't point at
+ * our configured R2 public base (e.g. it's a local /api/uploads/... URL, or
+ * object storage isn't configured) — callers should treat that as "nothing
+ * to delete in R2" rather than an error.
+ */
+export function keyFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  let base = (process.env.S3_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+  if (!base) return null;
+  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+  if (!url.startsWith(`${base}/`)) return null;
+  return url.slice(base.length + 1);
+}
+
 export { isConfigured as isObjectStorageConfigured };

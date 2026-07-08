@@ -550,9 +550,17 @@ export async function processMedia(assetId: string): Promise<boolean> {
   return result.ok;
 }
 
-export async function deleteMedia(id: string): Promise<boolean> {
-  const result = await apiFetch<{ deleted: boolean }>(`/api/media/${id}`, { method: "DELETE" });
-  return result.ok && result.data.deleted;
+export interface DeleteMediaResult {
+  deleted: boolean;
+  warnings?: string[];
+}
+
+export async function deleteMedia(id: string): Promise<DeleteMediaResult> {
+  const result = await apiFetch<{ deleted: boolean; warnings?: string[] }>(`/api/media/${id}`, {
+    method: "DELETE",
+  });
+  if (!result.ok) return { deleted: false };
+  return { deleted: result.data.deleted, warnings: result.data.warnings };
 }
 
 export async function duplicateMedia(id: string): Promise<ApiMediaAsset | null> {

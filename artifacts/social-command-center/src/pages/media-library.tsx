@@ -263,11 +263,18 @@ export default function MediaLibrary() {
     setPendingDelete(null);
     // Optimistically remove from the UI; the server delete also clears disk files.
     setAssets((prev) => prev.filter((a) => a.id !== target.id));
-    const ok = await deleteMedia(target.id);
-    if (!ok) {
+    const result = await deleteMedia(target.id);
+    if (!result.deleted) {
       toast({
         title: "Removed from library",
         description: "We couldn't confirm server-side deletion, but it's gone from your library.",
+      });
+      return;
+    }
+    if (result.warnings?.length) {
+      toast({
+        title: "Asset deleted",
+        description: result.warnings.join(" "),
       });
       return;
     }
