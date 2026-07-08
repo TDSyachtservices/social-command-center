@@ -19,6 +19,7 @@ import { logger } from "../utils/logger.js";
 import {
   createPresignedUpload,
   putObjectBuffer,
+  getObjectBuffer,
   isObjectStorageConfigured,
   deleteObject,
   keyFromPublicUrl,
@@ -51,9 +52,13 @@ function publicUrlFor(assetId: string, fileName: string, publicBase: string): st
 }
 
 /**
- * Replace an asset's MediaVersion rows from a freshly-processed set. Callers run
- * processImage first, so old rows are only dropped after processing succeeds and
- * a failed reprocess never destroys a working asset.
+ * Replace MediaVersion rows for exactly the (platform, placement) pairs being
+ * persisted this call — never every row belonging to the asset. Callers run
+ * processImage first, so old rows are only dropped after processing succeeds
+ * and a failed reprocess never destroys a working asset. Scoping the delete
+ * this way keeps the flow additive: generating one on-demand version (or
+ * reprocessing a subset) never wipes out sibling versions the user already
+ * chose to save.
  */
 async function persistVersions(
   assetId: string,
@@ -62,7 +67,17 @@ async function persistVersions(
   srcHeight: number,
 ) {
   const publicBase = buildPublicBase();
-  await prisma.mediaVersion.deleteMany({ where: { mediaAssetId: assetId } });
+  if (versions.length > 0) {
+    await prisma.mediaVersion.deleteMany({
+      where: {
+        mediaAssetId: assetId,
+        OR: versions.map((v) => ({
+          platform: v.spec.platform as never,
+          placement: v.spec.placement,
+        })),
+      },
+    });
+  }
 
   const rows = await Promise.all(
     versions.map((v) => {
@@ -121,6 +136,20 @@ async function persistVersions(
   }
 
   return rows;
+}
+
+// A single (platform, placement) selector — used wherever a caller can pick a
+// subset of IMAGE_PLATFORM_SPECS instead of generating all of them.
+const versionKeySchema = z.object({
+  platform: z.string().min(1),
+  placement: z.string().min(1),
+});
+
+/** Filter IMAGE_PLATFORM_SPECS down to the requested (platform, placement) pairs. */
+function specsFromKeys(keys: { platform: string; placement: string }[]): PlatformSpec[] {
+  return IMAGE_PLATFORM_SPECS.filter((s) =>
+    keys.some((k) => k.platform === s.platform && k.placement === s.placement),
+  );
 }
 
 const listQuerySchema = z.object({
@@ -316,6 +345,11 @@ const uploadFileSchema = z.object({
   fileData: z.string().min(1),          // base64-encoded file bytes
   mimeType: z.string().min(1),
   fileName: z.string().optional(),
+  // Which of the 9 platform/placement crops to generate + save right now.
+  // Omitted (back-compat) means "generate all" — matches the old behaviour.
+  // An explicit empty array means "generate none yet"; missing sizes can
+  // still be produced later on demand via POST /:id/versions/ensure.
+  selectedVersions: z.array(versionKeySchema).optional(),
 });
 
 router.post(
@@ -390,18 +424,24 @@ router.post(
       return;
     }
 
+    // No selection sent means "all" (back-compat with the old frontend, and
+    // the API's public default). An empty array is a deliberate "none yet".
+    const requestedSpecs = body.selectedVersions
+      ? specsFromKeys(body.selectedVersions)
+      : IMAGE_PLATFORM_SPECS;
+
     try {
       const versions = await processImage(
         originalPath,
         uploadDir,
-        IMAGE_PLATFORM_SPECS,
+        requestedSpecs,
         asset.originalWidth ?? 0,
         asset.originalHeight ?? 0,
       );
 
-      // Replace any previous versions with the fresh set. The resolution
-      // heuristic seeds each score; the frontend can re-score with AI vision
-      // via /api/ai/score-image + PATCH /api/media/version/:id/score.
+      // Persist just the requested subset. persistVersions only touches rows
+      // for the (platform, placement) pairs it's given, so this never wipes
+      // out versions generated on demand later.
       const versionRows = await persistVersions(
         id,
         versions,
@@ -441,10 +481,19 @@ router.post(
 );
 
 // ─── POST /api/media/:id/process ──────────────────────────────────────────────
-// Re-generate every platform version from the stored original, synchronously.
+// Re-generate platform versions from the stored original, synchronously.
 // ImageMagick runs inline (there is no background worker), so an asset can never
 // get stuck in PROCESSING. If no original file is stored, it errors without
 // changing state.
+//
+// Body may optionally include `selectedVersions` to scope which specs are
+// (re)generated. Without it, we default to whichever specs the asset already
+// has versions for — never silently regenerating sizes the user never chose —
+// falling back to "all" only when the asset has no versions yet at all.
+const processBodySchema = z
+  .object({ selectedVersions: z.array(versionKeySchema).optional() })
+  .optional();
+
 router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) => {
   const { id } = req.params;
   const asset = await prisma.mediaAsset.findUnique({ where: { id } });
@@ -465,11 +514,28 @@ router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) 
   }
   const uploadDir = path.dirname(originalPath);
 
+  const parsedBody = processBodySchema.safeParse(req.body);
+  const requestedKeys = parsedBody.success ? parsedBody.data?.selectedVersions : undefined;
+
+  let requestedSpecs: PlatformSpec[];
+  if (requestedKeys && requestedKeys.length > 0) {
+    requestedSpecs = specsFromKeys(requestedKeys);
+  } else {
+    const existing = await prisma.mediaVersion.findMany({
+      where: { mediaAssetId: id },
+      select: { platform: true, placement: true },
+    });
+    requestedSpecs =
+      existing.length > 0
+        ? specsFromKeys(existing.map((e) => ({ platform: e.platform as string, placement: e.placement })))
+        : IMAGE_PLATFORM_SPECS;
+  }
+
   try {
     const versions = await processImage(
       originalPath,
       uploadDir,
-      IMAGE_PLATFORM_SPECS,
+      requestedSpecs,
       asset.originalWidth ?? 0,
       asset.originalHeight ?? 0,
     );
@@ -507,6 +573,142 @@ router.post("/:id/process", async (req: Request<{ id: string }>, res: Response) 
     throw internal(processingErrorMessage(err));
   }
 });
+
+// ─── POST /api/media/:id/versions/ensure ──────────────────────────────────────
+// On-demand generation: return the existing MediaVersion for this
+// (platform, placement) if one is already saved, otherwise crop it now from
+// the stored original and persist it. This is how a post that needs a size
+// the user didn't pick at upload time gets it — without regenerating (or
+// wiping) any other version.
+const ensureVersionSchema = versionKeySchema;
+
+router.post(
+  "/:id/versions/ensure",
+  validateBody(ensureVersionSchema),
+  async (req: Request<{ id: string }>, res: Response) => {
+    const { id } = req.params;
+    const body = req.body as z.infer<typeof ensureVersionSchema>;
+
+    const asset = await prisma.mediaAsset.findUnique({ where: { id } });
+    if (!asset) throw notFound("MediaAsset", id);
+
+    if (asset.originalFileType === "video") {
+      sendError(res, "BAD_REQUEST", "Video assets are not processed by the image pipeline.");
+      return;
+    }
+
+    const spec = IMAGE_PLATFORM_SPECS.find(
+      (s) => s.platform === body.platform && s.placement === body.placement,
+    );
+    if (!spec) {
+      sendError(
+        res,
+        "BAD_REQUEST",
+        `Unknown platform/placement combination: ${body.platform}/${body.placement}.`,
+      );
+      return;
+    }
+
+    const existing = await prisma.mediaVersion.findFirst({
+      where: { mediaAssetId: id, platform: body.platform as never, placement: body.placement },
+    });
+    if (existing) {
+      sendSuccess(res, {
+        assetId: id,
+        generated: false,
+        version: {
+          id: existing.id,
+          platform: existing.platform,
+          placement: existing.placement,
+          width: existing.width,
+          height: existing.height,
+          url: existing.publicUrl,
+          qualityScore: existing.qualityScore,
+          qualityScoreLabel: existing.qualityScoreLabel,
+          qualityScoreReason: existing.qualityScoreReason,
+        },
+      });
+      return;
+    }
+
+    if (!asset.originalStorageKey) {
+      sendError(
+        res,
+        "BAD_REQUEST",
+        "No original file is stored for this asset — re-upload it first.",
+      );
+      return;
+    }
+
+    const uploadDir = path.join(process.cwd(), "uploads", id);
+    const originalPath = path.join(process.cwd(), asset.originalStorageKey);
+
+    // Local disk is wiped on every Railway redeploy — if the original isn't
+    // there but we have a durable R2 copy, pull it back down before cropping.
+    if (!fs.existsSync(originalPath)) {
+      const key = keyFromPublicUrl(asset.originalPublicUrl);
+      if (!key) {
+        sendError(
+          res,
+          "BAD_REQUEST",
+          "The original file is missing on the server — re-upload the image to generate more sizes.",
+        );
+        return;
+      }
+      try {
+        const buffer = await getObjectBuffer(key);
+        fs.mkdirSync(path.dirname(originalPath), { recursive: true });
+        fs.writeFileSync(originalPath, buffer);
+      } catch (err) {
+        logger.error(
+          { err, assetId: id },
+          "Failed to re-download original from R2 for on-demand version generation",
+        );
+        throw internal("Could not retrieve the original image from storage.");
+      }
+    }
+
+    try {
+      const processed = await processImage(
+        originalPath,
+        uploadDir,
+        [spec],
+        asset.originalWidth ?? 0,
+        asset.originalHeight ?? 0,
+      );
+      const [row] = await persistVersions(
+        id,
+        processed,
+        asset.originalWidth ?? 0,
+        asset.originalHeight ?? 0,
+      );
+
+      sendSuccess(
+        res,
+        {
+          assetId: id,
+          generated: true,
+          version: {
+            id: row.id,
+            platform: row.platform,
+            placement: row.placement,
+            width: row.width,
+            height: row.height,
+            url: row.publicUrl,
+            qualityScore: row.qualityScore,
+            qualityScoreLabel: row.qualityScoreLabel,
+            qualityScoreReason: row.qualityScoreReason,
+          },
+        },
+        undefined,
+        201,
+      );
+    } catch (err) {
+      logger.error(err, "Image processing failed during on-demand version generation");
+      throw internal(processingErrorMessage(err));
+    }
+  },
+);
 
 // ─── PATCH /api/media/:id/version/:versionId/focal-point ──────────────────────
 const focalPointSchema = z.object({

@@ -1,17 +1,20 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Image as ImageIcon, Film, UploadCloud, Play, X } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   listMedia,
   uploadMediaIntent,
   uploadFile,
   deleteMedia,
   duplicateMedia,
+  getMediaSpecs,
   type ApiMediaAsset,
+  type ApiMediaSpec,
 } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -107,6 +110,16 @@ function measureImageDimensions(file: File): Promise<{ width: number; height: nu
   });
 }
 
+type PendingUpload = {
+  file: File;
+  width: number;
+  height: number;
+};
+
+function specKey(s: Pick<ApiMediaSpec, "platform" | "placement">): string {
+  return `${s.platform}:${s.placement}`;
+}
+
 export default function MediaLibrary() {
   const [filter, setFilter] = useState("All");
   const [isUploading, setIsUploading] = useState(false);
@@ -115,7 +128,14 @@ export default function MediaLibrary() {
   const [assets, setAssets] = useState<DisplayAsset[]>(() => loadPersisted() ?? []);
   const [pendingDelete, setPendingDelete] = useState<DisplayAsset | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [mediaSpecs, setMediaSpecs] = useState<ApiMediaSpec[]>([]);
+  const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
+  const [selectedSpecKeys, setSelectedSpecKeys] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+
+  useEffect(() => {
+    getMediaSpecs().then(setMediaSpecs);
+  }, []);
 
   const isGif = (asset: DisplayAsset) => asset.originalFileName.toLowerCase().endsWith(".gif");
 
@@ -161,12 +181,32 @@ export default function MediaLibrary() {
     persist(assets);
   }, [assets]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Step 1: stage the picked file and, for images, let the user choose which
+  // platform sizes to generate now (any unpicked size is created later, on
+  // demand, when a post actually needs it).
+  const handleFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
+    const { width, height } = await measureImageDimensions(file);
+    const isVideo = file.type.startsWith("video/");
+    if (isVideo || mediaSpecs.length === 0) {
+      // Videos aren't processed by the crop pipeline — upload immediately.
+      void performUpload(file, width, height, undefined);
+      return;
+    }
+    setPendingUpload({ file, width, height });
+    setSelectedSpecKeys(new Set(mediaSpecs.map(specKey)));
+  };
+
+  const performUpload = async (
+    file: File,
+    width: number,
+    height: number,
+    selectedVersions: { platform: string; placement: string }[] | undefined,
+  ) => {
     setIsUploading(true);
     try {
-      const { width, height } = await measureImageDimensions(file);
       const result = await uploadMediaIntent({
         fileName: file.name,
         mimeType: file.type,
@@ -197,7 +237,7 @@ export default function MediaLibrary() {
       toast({ title: "Media uploaded", description: `Processing platform versions for ${file.name}…` });
 
       // Upload the actual bytes for server-side ImageMagick processing.
-      uploadFile(result.assetId, file).then((processed) => {
+      uploadFile(result.assetId, file, selectedVersions).then((processed) => {
         if (processed) {
           setAssets((prev) =>
             prev.map((a) =>
@@ -232,6 +272,32 @@ export default function MediaLibrary() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const confirmStagedUpload = () => {
+    if (!pendingUpload) return;
+    const selected = mediaSpecs.filter((s) => selectedSpecKeys.has(specKey(s)));
+    void performUpload(
+      pendingUpload.file,
+      pendingUpload.width,
+      pendingUpload.height,
+      selected.map((s) => ({ platform: s.platform, placement: s.placement })),
+    );
+    setPendingUpload(null);
+  };
+
+  const cancelStagedUpload = () => {
+    setPendingUpload(null);
+    setSelectedSpecKeys(new Set());
+  };
+
+  const toggleSpec = (key: string, checked: boolean) => {
+    setSelectedSpecKeys((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   };
 
   const handleDuplicate = async (id: string) => {
@@ -317,7 +383,7 @@ export default function MediaLibrary() {
           <input
             type="file"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onChange={handleUpload}
+            onChange={handleFilePicked}
             accept="image/*,video/*"
             disabled={isUploading}
             data-testid="input-file-upload"
@@ -464,6 +530,79 @@ export default function MediaLibrary() {
           );
         })}
       </div>
+
+      {/* Upload-time platform size picker */}
+      <Dialog open={pendingUpload !== null} onOpenChange={(open) => !open && cancelStagedUpload()}>
+        <DialogContent className="max-w-lg" data-testid="dialog-upload-specs">
+          <DialogHeader>
+            <DialogTitle>Choose sizes to generate</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-2">
+            {pendingUpload?.file.name} — pick which platform sizes to crop now. Any size you skip
+            will be generated automatically the first time a post needs it.
+          </p>
+          <div className="space-y-4 max-h-[50vh] overflow-y-auto py-1">
+            {Array.from(new Set(mediaSpecs.map((s) => s.platform))).map((platform) => (
+              <div key={platform} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <PlatformBadge platform={platform as any} showText={true} />
+                </div>
+                <div className="pl-6 space-y-2">
+                  {mediaSpecs
+                    .filter((s) => s.platform === platform)
+                    .map((spec) => {
+                      const key = specKey(spec);
+                      const label = spec.placement
+                        .split("_")
+                        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                        .join(" ");
+                      return (
+                        <div key={key} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            id={`spec-${key}`}
+                            checked={selectedSpecKeys.has(key)}
+                            onCheckedChange={(c) => toggleSpec(key, c === true)}
+                            data-testid={`checkbox-spec-${key}`}
+                          />
+                          <label htmlFor={`spec-${key}`} className="cursor-pointer flex-1 flex items-center gap-1.5">
+                            {label}
+                            <span className="text-muted-foreground text-xs">
+                              ({spec.width}×{spec.height})
+                            </span>
+                          </label>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedSpecKeys(new Set())}
+              data-testid="btn-upload-specs-clear"
+            >
+              Clear all
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedSpecKeys(new Set(mediaSpecs.map(specKey)))}
+              data-testid="btn-upload-specs-all"
+            >
+              Select all
+            </Button>
+            <Button variant="outline" onClick={cancelStagedUpload} data-testid="btn-upload-specs-cancel">
+              Cancel
+            </Button>
+            <Button onClick={confirmStagedUpload} data-testid="btn-upload-specs-confirm">
+              Upload
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Video lightbox */}
       <Dialog open={lightboxUrl !== null} onOpenChange={(open) => !open && setLightboxUrl(null)}>

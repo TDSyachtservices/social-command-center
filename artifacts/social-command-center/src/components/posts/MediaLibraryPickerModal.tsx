@@ -1,17 +1,20 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Library, Film, Image as ImageIcon, CheckCircle2, ChevronLeft, ExternalLink, Play } from "lucide-react";
+import { Library, Film, Image as ImageIcon, CheckCircle2, ChevronLeft, ExternalLink, Play, Wand2, Loader2 } from "lucide-react";
 import { Link } from "wouter";
-import { listMedia, getMediaAsset, type ApiMediaAsset, type ApiMediaVersion } from "@/lib/api";
+import { listMedia, getMediaAsset, ensureMediaVersion, type ApiMediaAsset, type ApiMediaVersion } from "@/lib/api";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
+import { useToast } from "@/hooks/use-toast";
 
-// ─── Static fallback specs (shown when no optimized versions exist) ────────────
+// ─── Static fallback specs (shown when no optimized versions exist).
+// `placement` matches the server's IMAGE_PLATFORM_SPECS key so we can request
+// this exact crop on demand via ensureMediaVersion.
 const FALLBACK_SPECS = [
-  { platform: "Facebook",  label: "Feed Post",   platformKey: "FACEBOOK",  w: 1200, h: 630  },
-  { platform: "Instagram", label: "Square Post", platformKey: "INSTAGRAM", w: 1080, h: 1080 },
-  { platform: "Instagram", label: "Story",       platformKey: "INSTAGRAM", w: 1080, h: 1920 },
-  { platform: "LinkedIn",  label: "Post",        platformKey: "LINKEDIN",  w: 1200, h: 627  },
+  { platform: "Facebook",  label: "Feed Post",   platformKey: "FACEBOOK",  placement: "feed_landscape", w: 1200, h: 630  },
+  { platform: "Instagram", label: "Square Post", platformKey: "INSTAGRAM", placement: "feed_square",    w: 1080, h: 1080 },
+  { platform: "Instagram", label: "Story",       platformKey: "INSTAGRAM", placement: "story",          w: 1080, h: 1920 },
+  { platform: "LinkedIn",  label: "Post",        platformKey: "LINKEDIN",  placement: "feed_landscape", w: 1200, h: 627  },
 ];
 
 const PLATFORM_DISPLAY: Record<string, string> = {
@@ -58,6 +61,8 @@ function VersionCard({
   isVideo,
   isOptimized,
   onUse,
+  onGenerate,
+  isGenerating,
 }: {
   label: string;
   w: number;
@@ -66,6 +71,8 @@ function VersionCard({
   isVideo: boolean;
   isOptimized: boolean;
   onUse?: () => void;
+  onGenerate?: () => void;
+  isGenerating?: boolean;
 }) {
   const maxH = 160;
   const maxW = Math.round(maxH * w / h);
@@ -111,9 +118,29 @@ function VersionCard({
           <Button size="sm" className="w-full h-7 text-xs" onClick={onUse}>
             Use this version
           </Button>
+        ) : onGenerate ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full h-7 text-xs"
+            onClick={onGenerate}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-3 h-3 mr-1" />
+                Generate this size
+              </>
+            )}
+          </Button>
         ) : (
           <p className="text-[11px] text-muted-foreground text-center py-0.5">
-            Not optimized — use the Media Optimizer to generate this crop
+            Not optimized
           </p>
         )}
       </div>
@@ -130,6 +157,7 @@ function PlatformSection({
   isVideo,
   onUse,
   onOpenChange,
+  onGenerated,
 }: {
   platformKey: string;
   versions: ApiMediaVersion[];
@@ -138,10 +166,52 @@ function PlatformSection({
   isVideo: boolean;
   onUse: (url: string) => void;
   onOpenChange: (open: boolean) => void;
+  onGenerated: (version: ApiMediaVersion) => void;
 }) {
+  const { toast } = useToast();
+  const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const displayName = PLATFORM_DISPLAY[platformKey] ?? platformKey;
-  const fallbacks = FALLBACK_SPECS.filter((s) => s.platformKey === platformKey);
   const readyVersions = versions.filter((v) => v.publicUrl);
+  const readyPlacements = new Set(readyVersions.map((v) => v.placement));
+  // Only offer on-demand generation for specs the asset doesn't already have.
+  const missingSpecs = FALLBACK_SPECS.filter(
+    (s) => s.platformKey === platformKey && !readyPlacements.has(s.placement),
+  );
+
+  const handleGenerate = async (spec: (typeof FALLBACK_SPECS)[number]) => {
+    const key = `${spec.platformKey}:${spec.placement}`;
+    setGeneratingKey(key);
+    try {
+      const result = await ensureMediaVersion(assetId, spec.platformKey, spec.placement);
+      if (!result) {
+        toast({ title: "Couldn't generate that size", variant: "destructive" });
+        return;
+      }
+      onGenerated({
+        id: result.version.id,
+        platform: spec.platformKey,
+        placement: spec.placement,
+        width: result.version.width,
+        height: result.version.height,
+        aspectRatio: `${result.version.width}:${result.version.height}`,
+        format: "jpg",
+        mimeType: "image/jpeg",
+        publicUrl: result.version.url,
+        storageKey: null,
+        processingStatus: "READY",
+        cropMode: "smart",
+        focalPointJson: null,
+        validationStatus: "passed",
+        qualityScore: result.version.qualityScore ?? null,
+        qualityScoreLabel: result.version.qualityScoreLabel ?? null,
+        qualityScoreReason: null,
+      });
+    } catch {
+      toast({ title: "Couldn't generate that size", variant: "destructive" });
+    } finally {
+      setGeneratingKey(null);
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -155,41 +225,44 @@ function PlatformSection({
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {readyVersions.length > 0 ? (
-          readyVersions.map((v) => {
-            const placement = v.placement
-              .split("_")
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-              .join(" ");
+        {readyVersions.map((v) => {
+          const placement = v.placement
+            .split("_")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ");
+          return (
+            <VersionCard
+              key={v.id}
+              label={placement}
+              w={v.width}
+              h={v.height}
+              imageUrl={v.publicUrl}
+              isVideo={isVideo}
+              isOptimized={true}
+              onUse={() => onUse(v.publicUrl!)}
+            />
+          );
+        })}
+        {!isVideo &&
+          missingSpecs.map((spec) => {
+            const key = `${spec.platformKey}:${spec.placement}`;
             return (
               <VersionCard
-                key={v.id}
-                label={placement}
-                w={v.width}
-                h={v.height}
-                imageUrl={v.publicUrl}
+                key={key}
+                label={spec.label}
+                w={spec.w}
+                h={spec.h}
+                imageUrl={fallbackImageUrl}
                 isVideo={isVideo}
-                isOptimized={true}
-                onUse={() => onUse(v.publicUrl!)}
+                isOptimized={false}
+                onGenerate={() => handleGenerate(spec)}
+                isGenerating={generatingKey === key}
               />
             );
-          })
-        ) : (
-          fallbacks.map((spec) => (
-            <VersionCard
-              key={`${spec.platformKey}-${spec.label}`}
-              label={spec.label}
-              w={spec.w}
-              h={spec.h}
-              imageUrl={fallbackImageUrl}
-              isVideo={isVideo}
-              isOptimized={false}
-            />
-          ))
-        )}
+          })}
       </div>
 
-      {readyVersions.length === 0 && (
+      {isVideo && readyVersions.length === 0 && (
         <Link
           href={`/media-optimizer/${assetId}`}
           onClick={() => onOpenChange(false)}
@@ -385,6 +458,9 @@ export function MediaLibraryPickerModal({ open, onOpenChange, onSelect }: MediaL
                       isVideo={selected.originalFileType === "video"}
                       onUse={handleUseVersion}
                       onOpenChange={onOpenChange}
+                      onGenerated={(v) =>
+                        setVersions((prev) => [...prev.filter((p) => p.id !== v.id), v])
+                      }
                     />
                   ))}
                 </div>

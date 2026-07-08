@@ -545,8 +545,14 @@ export async function patchFocalPoint(
   return result.ok ? result.data : null;
 }
 
-export async function processMedia(assetId: string): Promise<boolean> {
-  const result = await apiFetch<unknown>(`/api/media/${assetId}/process`, { method: "POST" });
+export async function processMedia(
+  assetId: string,
+  selectedVersions?: { platform: string; placement: string }[],
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/media/${assetId}/process`, {
+    method: "POST",
+    body: JSON.stringify(selectedVersions ? { selectedVersions } : {}),
+  });
   return result.ok;
 }
 
@@ -656,6 +662,7 @@ export interface UploadFileResult {
 export async function uploadFile(
   assetId: string,
   file: File,
+  selectedVersions?: { platform: string; placement: string }[],
 ): Promise<UploadFileResult | null> {
   // Read the file as a base64 data-URL, then strip the header prefix.
   const base64 = await new Promise<string>((resolve, reject) => {
@@ -670,7 +677,36 @@ export async function uploadFile(
 
   const result = await apiFetch<UploadFileResult>(`/api/media/${assetId}/upload-file`, {
     method: "POST",
-    body: JSON.stringify({ fileData: base64, mimeType: file.type, fileName: file.name }),
+    body: JSON.stringify({
+      fileData: base64,
+      mimeType: file.type,
+      fileName: file.name,
+      ...(selectedVersions ? { selectedVersions } : {}),
+    }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface EnsureVersionResult {
+  assetId: string;
+  generated: boolean;
+  version: UploadFileVersion;
+}
+
+/**
+ * Get (or, if it doesn't exist yet, generate on demand and persist) a single
+ * platform/placement crop for an asset. Used when composing a post needs a
+ * size the user didn't pick at upload time — never regenerates or disturbs
+ * any other saved version.
+ */
+export async function ensureMediaVersion(
+  assetId: string,
+  platform: string,
+  placement: string,
+): Promise<EnsureVersionResult | null> {
+  const result = await apiFetch<EnsureVersionResult>(`/api/media/${assetId}/versions/ensure`, {
+    method: "POST",
+    body: JSON.stringify({ platform, placement }),
   });
   return result.ok ? result.data : null;
 }

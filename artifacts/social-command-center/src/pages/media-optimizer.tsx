@@ -5,6 +5,7 @@ import {
   getMediaSpecs,
   patchFocalPoint,
   uploadFile,
+  ensureMediaVersion,
   scoreImageWithAi,
   patchVersionScore,
 } from "@/lib/api";
@@ -33,6 +34,8 @@ import { useToast } from "@/hooks/use-toast";
 interface DisplaySpec {
   platform: string;
   placement: string;
+  rawPlatform: string;
+  rawPlacement: string;
   width: number;
   height: number;
   aspectRatio: string;
@@ -51,6 +54,8 @@ function toDisplaySpec(s: ApiMediaSpec): DisplaySpec {
       .split("_")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" "),
+    rawPlatform: s.platform,
+    rawPlacement: s.placement,
     width: s.width,
     height: s.height,
     aspectRatio: s.aspectRatio,
@@ -611,8 +616,24 @@ export default function MediaOptimizer() {
       const mimeType = getMimeType(asset.originalFileName, asset.originalFileType);
       const file = new File([blob], asset.originalFileName, { type: mimeType });
 
+      // If the user checked specific sizes, only generate those on the server —
+      // otherwise fall back to generating every platform size.
+      const selectedSpecs =
+        selectedPresets.length > 0
+          ? selectedPresets
+              .map((presetId) => {
+                const [platform, ...rest] = presetId.split("-");
+                const placementLabel = rest.join("-");
+                const spec = specs.find(
+                  (p) => p.platform === platform && p.placement === placementLabel,
+                );
+                return spec ? { platform: spec.rawPlatform, placement: spec.rawPlacement } : null;
+              })
+              .filter((s): s is { platform: string; placement: string } => s !== null)
+          : undefined;
+
       setProcessingStep("Generating platform versions…");
-      const result = await uploadFile(asset.id, file);
+      const result = await uploadFile(asset.id, file, selectedSpecs);
 
       if (!result) {
         toast({
@@ -699,7 +720,7 @@ export default function MediaOptimizer() {
     setIsGenerating(true);
     try {
       const matched: ApiMediaVersion[] = [];
-      const missing: string[] = [];
+      const missingSpecs: DisplaySpec[] = [];
 
       for (const presetId of selectedPresets) {
         const [platform, ...rest] = presetId.split("-");
@@ -710,23 +731,69 @@ export default function MediaOptimizer() {
         if (!preset) continue;
         const v = findVersion(preset);
         if (v) matched.push(v);
-        else missing.push(`${platform} ${placementLabel}`);
+        else missingSpecs.push(preset);
       }
 
       if (asset!.allVersions.length === 0) {
         // Truly no server versions exist yet — generate them now.
         // handleProcessImage will filter by selectedPresets after generation.
         void handleProcessImage();
-      } else {
-        // Versions exist — show only the matched subset. Never fall back to
-        // showing all versions when the user has made a selection.
-        setDisplayedVersions(matched);
-        if (missing.length > 0) {
-          toast({
-            title: `${matched.length} version${matched.length !== 1 ? "s" : ""} shown`,
-            description: `No version found for: ${missing.join(", ")}.`,
-          });
+        return;
+      }
+
+      // Some sizes already exist; generate the rest on demand (one crop each,
+      // without touching any other saved version) instead of dead-ending.
+      const generated: ApiMediaVersion[] = [];
+      const failed: string[] = [];
+      for (const spec of missingSpecs) {
+        try {
+          const result = await ensureMediaVersion(asset!.id, spec.rawPlatform, spec.rawPlacement);
+          if (result) {
+            generated.push({
+              id: result.version.id,
+              platform: spec.rawPlatform,
+              placement: spec.rawPlacement,
+              width: result.version.width,
+              height: result.version.height,
+              aspectRatio: spec.aspectRatio,
+              format: "jpeg",
+              mimeType: "image/jpeg",
+              publicUrl: result.version.url,
+              storageKey: null,
+              processingStatus: "READY",
+              cropMode: "fill",
+              focalPointJson: null,
+              qualityScore: result.version.qualityScore,
+              qualityScoreLabel: result.version.qualityScoreLabel,
+              qualityScoreReason: null,
+              validationStatus: "READY",
+            });
+          } else {
+            failed.push(`${spec.platform} ${spec.placement}`);
+          }
+        } catch {
+          failed.push(`${spec.platform} ${spec.placement}`);
         }
+      }
+
+      if (generated.length > 0) {
+        setAsset((prev) =>
+          prev ? { ...prev, allVersions: [...prev.allVersions, ...generated] } : prev,
+        );
+      }
+
+      setDisplayedVersions([...matched, ...generated]);
+
+      if (failed.length > 0) {
+        toast({
+          title: `${matched.length + generated.length} version${matched.length + generated.length !== 1 ? "s" : ""} shown`,
+          description: `Couldn't generate: ${failed.join(", ")}.`,
+          variant: "destructive",
+        });
+      } else if (generated.length > 0) {
+        toast({
+          title: `${generated.length} new size${generated.length !== 1 ? "s" : ""} generated`,
+        });
       }
     } finally {
       setIsGenerating(false);

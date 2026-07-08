@@ -25,6 +25,10 @@ Write a `.mjs` script and run it with `node scripts/push-to-github.mjs`:
 5. `POST /repos/{owner}/{repo}/git/commits` with `{ message, tree, parents: [commitSha] }` → new commit SHA
 6. `PATCH /repos/{owner}/{repo}/git/refs/heads/{branch}` with `{ sha: newCommitSha }` → update branch
 
+**Critical: read blob content from the filesystem (`fs.readFileSync`), never from the git index (`git show :path`).** The `edit`/`write` tools only touch the working tree; `git add` is blocked in this sandbox, so the index is stale the moment you make an edit. `git show :path` silently serves the last-staged (old) version with no error — a push can "succeed" (valid commit, ref updates) while shipping pre-edit code. `git ls-files` is still fine for enumerating tracked paths, and `git hash-object <path>` still correctly hashes the working-tree file for diffing — only the actual blob content step must bypass the index.
+
+After every push, verify the specific change landed by re-fetching that file's blob sha via the Contents/Trees API (not `raw.githubusercontent.com`, which can serve a stale CDN-cached copy) and diffing against `git hash-object <path>` — don't just trust "ref updated" in the script output, and don't just trust a Railway build-timestamp bump either (see below).
+
 Delete the script when done (it's a one-off utility).
 
 ## Gotchas (learned the hard way)

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createId } from "@paralleldrive/cuid2";
 import { badRequest } from "../utils/errors.js";
@@ -169,6 +169,25 @@ export async function putObjectBuffer(
 export async function deleteObject(key: string): Promise<void> {
   const client = getClient();
   await client.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+}
+
+/**
+ * Download an object's bytes back from R2. Used to recover the original file
+ * when it's missing from local disk (Railway wipes /uploads on every
+ * redeploy) but we still need it on disk to run ImageMagick for an on-demand
+ * version generation.
+ */
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const client = getClient();
+  const result = await client.send(
+    new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }),
+  );
+  const stream = result.Body as NodeJS.ReadableStream;
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as Uint8Array));
+  }
+  return Buffer.concat(chunks);
 }
 
 /**
