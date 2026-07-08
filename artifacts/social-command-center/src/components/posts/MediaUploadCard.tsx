@@ -9,6 +9,7 @@ import { MediaLibraryPickerModal } from "./MediaLibraryPickerModal";
 
 interface MediaUploadCardProps {
   onMediaSelect: (url: string, type: "image" | "video") => void;
+  onUploadPendingChange?: (pending: boolean) => void;
   initialPreview?: string | null;
   initialType?: "image" | "video";
   label?: string;
@@ -106,9 +107,11 @@ const compatLabel: Record<CompatStatus, { text: string; dot: string; textColor: 
   "too-small": { text: "Too small",     dot: "bg-red-500",   textColor: "text-red-600 dark:text-red-400" },
 };
 
-export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialType = "image", label = "Media Content" }: MediaUploadCardProps) {
+export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialPreview = null, initialType = "image", label = "Media Content" }: MediaUploadCardProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  const [isPersisting, setIsPersisting] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const [preview, setPreview] = useState<string | null>(initialPreview);
   const [previewType, setPreviewType] = useState<"image" | "video">(initialType);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -120,6 +123,7 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
     if (!file) return;
 
     setIsUploading(true);
+    setUploadFailed(false);
     try {
       const dims = await measureDimensions(file);
       setDimensions(dims);
@@ -136,6 +140,11 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
       const mediaType = file.type.startsWith("video/") ? "video" : "image";
       setPreview(blobUrl);
       setPreviewType(mediaType);
+      // NOTE: this blob: URL is only a placeholder for the immediate preview — it
+      // only exists in this browser tab and can never be fetched by a platform
+      // adapter (e.g. Facebook fetching `file_url`). It gets swapped below for the
+      // real, permanent server URL as soon as the upload finishes. Submitting the
+      // post before that swap happens must be blocked (see onUploadPendingChange).
       onMediaSelect(blobUrl, mediaType);
 
       if (result) {
@@ -148,21 +157,48 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
           originalHeight: dims.height,
           previewUrl: blobUrl,
         });
-        toast({ title: "Media saved to library", description: `Processing platform versions…` });
+        toast({ title: "Media saved to library", description: `Uploading original file…` });
 
-        // Fire-and-forget: upload the actual bytes and generate resized versions.
+        setIsPersisting(true);
+        onUploadPendingChange?.(true);
+        // Upload the actual bytes and generate resized versions. This is awaited
+        // (not fire-and-forget) so we can replace the temporary blob URL with the
+        // real, permanent one — and block publishing until that happens.
         uploadFile(result.assetId, file).then((processed) => {
-          if (processed && processed.versions.length > 0) {
+          if (processed && processed.originalUrl) {
+            setPreview(processed.originalUrl);
+            onMediaSelect(processed.originalUrl, mediaType);
+            if (processed.versions.length > 0) {
+              toast({
+                title: "Platform versions ready",
+                description: `${processed.versions.length} resized versions generated for ${file.name}.`,
+              });
+            }
+          } else {
+            setUploadFailed(true);
             toast({
-              title: "Platform versions ready",
-              description: `${processed.versions.length} resized versions generated for ${file.name}.`,
+              title: "Upload failed",
+              description: `${file.name} could not be saved to the server. Remove it and try again before publishing.`,
+              variant: "destructive",
             });
           }
-        }).catch(() => {/* server unreachable — silent; blob preview still works */});
+        }).catch(() => {
+          setUploadFailed(true);
+          toast({
+            title: "Upload failed",
+            description: `${file.name} could not be saved to the server. Remove it and try again before publishing.`,
+            variant: "destructive",
+          });
+        }).finally(() => {
+          setIsPersisting(false);
+          onUploadPendingChange?.(false);
+        });
       } else {
-        toast({ title: "Media attached", description: "Could not reach the API — file attached to this post only.", variant: "destructive" });
+        setUploadFailed(true);
+        toast({ title: "Upload failed", description: "Could not reach the API — remove this file and try again before publishing.", variant: "destructive" });
       }
     } catch {
+      setUploadFailed(true);
       toast({ title: "Upload error", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsUploading(false);
@@ -173,14 +209,19 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
     setPreview(url);
     setPreviewType(type);
     setDimensions(null);
+    setUploadFailed(false);
     onMediaSelect(url, type);
+    onUploadPendingChange?.(false);
     toast({ title: "Media selected", description: "Image attached to this post." });
   };
 
   const handleRemove = () => {
     setPreview(null);
     setDimensions(null);
+    setUploadFailed(false);
+    setIsPersisting(false);
     onMediaSelect("", "image");
+    onUploadPendingChange?.(false);
   };
 
   const specs = previewType === "video" ? VIDEO_SPECS : IMAGE_SPECS;
@@ -243,6 +284,12 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
                 {dimensions.width}×{dimensions.height}
               </div>
             )}
+            {isPersisting && (
+              <div className="absolute inset-x-0 top-0 z-20 flex items-center gap-2 bg-black/70 text-white text-xs px-3 py-1.5">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white shrink-0" />
+                Saving file to server — don't publish yet…
+              </div>
+            )}
             <button
               onClick={handleRemove}
               className="absolute top-2 right-2 z-20 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
@@ -250,6 +297,14 @@ export function MediaUploadCard({ onMediaSelect, initialPreview = null, initialT
               <X className="h-4 w-4" />
             </button>
           </div>
+
+          {uploadFailed && (
+            <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md p-3">
+              <span>
+                This file failed to save to the server and can't be published as-is. Remove it and upload again.
+              </span>
+            </div>
+          )}
 
           <div className="border rounded-md overflow-hidden bg-card">
             <button

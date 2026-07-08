@@ -54,6 +54,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [platformHashtags, setPlatformHashtags] = useState<Record<string, string[]>>({});
   const [platformMentions, setPlatformMentions] = useState<Record<string, string[]>>({});
   const [platformMedia, setPlatformMedia] = useState<Record<string, PlatformMediaValue | null>>({});
+  const [pendingMediaUploads, setPendingMediaUploads] = useState<Set<string>>(new Set());
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("09:00");
 
@@ -234,6 +235,15 @@ export function PostComposer({ editPostId }: PostComposerProps) {
     setPlatformMedia((prev) => ({ ...prev, [platform]: value }));
   };
 
+  const handleUploadPendingChange = (platform: Platform, pending: boolean) => {
+    setPendingMediaUploads((prev) => {
+      const next = new Set(prev);
+      if (pending) next.add(platform);
+      else next.delete(platform);
+      return next;
+    });
+  };
+
   const handleApplyMediaToAll = (value: PlatformMediaValue) => {
     setPlatformMedia((prev) => {
       const next = { ...prev };
@@ -244,6 +254,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const accountIds = getAccountIds();
   const noConnectedAccounts = platforms.length > 0 && accountIds.length === 0;
+  const hasPendingMediaUploads = pendingMediaUploads.size > 0;
   const hasAnyMedia = postType === "album"
     ? albumUrls.length >= 2
     : platforms.some((p) => !!platformMedia[p]?.url);
@@ -256,6 +267,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const hasContentErrors = hasBlockingErrors(validationIssues) && postType === "standard";
 
   const handleSaveDraft = async () => {
+    if (hasPendingMediaUploads) {
+      toast({ title: "Media still uploading", description: "Wait for the file upload to finish before saving.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const body = { ...buildPostBody(), status: "DRAFT" };
@@ -278,6 +293,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const handleSchedule = async () => {
     if (hasContentErrors) {
       toast({ title: "Can't schedule yet", description: "Fix the highlighted platform requirements first.", variant: "destructive" });
+      return;
+    }
+    if (hasPendingMediaUploads) {
+      toast({ title: "Media still uploading", description: "Wait for the file upload to finish before scheduling.", variant: "destructive" });
       return;
     }
     if (!date) {
@@ -316,6 +335,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const handlePublishNow = async () => {
     if (hasContentErrors) {
       toast({ title: "Can't publish yet", description: "Fix the highlighted platform requirements first.", variant: "destructive" });
+      return;
+    }
+    if (hasPendingMediaUploads) {
+      toast({ title: "Media still uploading", description: "Wait for the file upload to finish before publishing.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -451,7 +474,15 @@ export function PostComposer({ editPostId }: PostComposerProps) {
                 platformMedia={platformMedia}
                 onChange={handlePlatformMediaChange}
                 onApplyToAll={handleApplyMediaToAll}
+                onUploadPendingChange={handleUploadPendingChange}
               />
+            )}
+
+            {hasPendingMediaUploads && (
+              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>A media file is still uploading to the server. Scheduling, publishing, and saving are disabled until it finishes.</span>
+              </div>
             )}
 
 
@@ -507,24 +538,24 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
             <div className="flex flex-wrap gap-3 pt-6 border-t">
               <Button
-                disabled={!isFormValid || isSubmitting || hasContentErrors}
+                disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
                 className="flex-1 min-w-[150px]"
                 onClick={handleSchedule}
               >
-                {isSubmitting ? "Saving…" : isEditMode ? "Reschedule" : "Schedule Post"}
+                {isSubmitting ? "Saving…" : hasPendingMediaUploads ? "Uploading media…" : isEditMode ? "Reschedule" : "Schedule Post"}
               </Button>
               <Button
-                disabled={!isFormValid || isSubmitting || hasContentErrors}
+                disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
                 variant="outline"
                 className="flex-1 min-w-[150px]"
                 onClick={handlePublishNow}
               >
-                {isSubmitting ? "Publishing…" : "Publish Now"}
+                {isSubmitting ? "Publishing…" : hasPendingMediaUploads ? "Uploading media…" : "Publish Now"}
               </Button>
               <Button
                 variant="secondary"
                 className="flex-1 min-w-[150px]"
-                disabled={title.length === 0 || isSubmitting}
+                disabled={title.length === 0 || isSubmitting || hasPendingMediaUploads}
                 onClick={handleSaveDraft}
               >
                 {isSubmitting ? "Saving…" : isEditMode ? "Update Draft" : "Save Draft"}

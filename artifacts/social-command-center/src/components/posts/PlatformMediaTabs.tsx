@@ -15,9 +15,10 @@ interface PlatformMediaTabsProps {
   platformMedia: Record<string, PlatformMediaValue | null>;
   onChange: (platform: Platform, value: PlatformMediaValue | null) => void;
   onApplyToAll: (value: PlatformMediaValue) => void;
+  onUploadPendingChange?: (platform: Platform, pending: boolean) => void;
 }
 
-export function PlatformMediaTabs({ platforms, platformMedia, onChange, onApplyToAll }: PlatformMediaTabsProps) {
+export function PlatformMediaTabs({ platforms, platformMedia, onChange, onApplyToAll, onUploadPendingChange }: PlatformMediaTabsProps) {
   if (platforms.length === 0) return null;
 
   return (
@@ -51,6 +52,7 @@ export function PlatformMediaTabs({ platforms, platformMedia, onChange, onApplyT
                 initialPreview={value?.url ?? null}
                 initialType={value?.type ?? "image"}
                 onMediaSelect={(url, type) => onChange(platform, url ? { url, type } : null)}
+                onUploadPendingChange={(pending) => onUploadPendingChange?.(platform, pending)}
               />
 
               {value?.url && platforms.length > 1 && (
