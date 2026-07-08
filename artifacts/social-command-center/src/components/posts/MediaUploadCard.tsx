@@ -209,19 +209,15 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
 
         setIsPersisting(true);
         onUploadPendingChange?.(true);
-        // Upload the actual bytes and generate resized versions. This is awaited
-        // (not fire-and-forget) so we can replace the temporary blob URL with the
-        // real, permanent one — and block publishing until that happens.
-        uploadFile(result.assetId, file).then((processed) => {
+        // Upload the actual bytes to durable storage. Pass an empty selectedVersions
+        // array so no platform crops are generated now — they can be generated later
+        // from the Media Library if needed. This is awaited (not fire-and-forget) so
+        // we can replace the temporary blob URL with the real, permanent one — and
+        // block publishing until that happens.
+        uploadFile(result.assetId, file, []).then((processed) => {
           if (processed && processed.originalUrl) {
             setPreview(processed.originalUrl);
             onMediaSelect(processed.originalUrl, mediaType);
-            if (processed.versions.length > 0) {
-              toast({
-                title: "Platform versions ready",
-                description: `${processed.versions.length} resized versions generated for ${file.name}.`,
-              });
-            }
           } else {
             setUploadFailed(true);
             toast({
