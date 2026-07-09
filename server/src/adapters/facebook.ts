@@ -241,6 +241,44 @@ export async function publishAlbum(opts: {
 }
 
 /**
+ * Poll a just-uploaded (unpublished) video's `status.video_status` field until
+ * Facebook finishes processing it server-side, or give up. Referencing a
+ * video_id in another endpoint (e.g. /stories) before processing completes
+ * fails with a generic, misleading error — "Object with ID '<page-id>' does
+ * not exist... or does not support this operation" (code 100, subcode 33) —
+ * that looks like a permissions/endpoint problem but is actually just a race:
+ * the video object isn't fully materialized yet. Photos don't need this
+ * (their upload is synchronous), which is why only Story *videos* hit this.
+ */
+async function waitForVideoReady(
+  videoId: string,
+  accessToken: string,
+  { maxAttempts = 10, intervalMs = 2000 }: { maxAttempts?: number; intervalMs?: number } = {},
+): Promise<{ ready: boolean; lastStatus?: string; error?: string }> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, intervalMs));
+    try {
+      const res = await fetch(
+        `${GRAPH}/${videoId}?fields=status&access_token=${encodeURIComponent(accessToken)}`,
+        { signal: AbortSignal.timeout(15_000) },
+      );
+      const data = (await res.json()) as {
+        status?: { video_status?: string };
+        error?: { message: string };
+      };
+      if (data.error) return { ready: false, error: data.error.message };
+      const videoStatus = data.status?.video_status;
+      if (videoStatus === "ready") return { ready: true, lastStatus: videoStatus };
+      if (videoStatus === "error") return { ready: false, lastStatus: videoStatus };
+      // "processing" (or missing) — keep polling.
+    } catch {
+      // Transient network hiccup while polling — keep trying until maxAttempts.
+    }
+  }
+  return { ready: false, lastStatus: "timeout" };
+}
+
+/**
  * Facebook Story: publish a photo or short video (≤ 20s) as a Page story.
  * Requires pages_manage_posts + pages_read_engagement.
  */
@@ -271,6 +309,19 @@ export async function publishStory(opts: {
       return { success: false, errorMessage: `Story video upload failed: ${msg}`, rawResponse: uploadData };
     }
     mediaId = uploadData.id;
+
+    // Facebook processes the uploaded video asynchronously — wait for it to
+    // report "ready" before referencing it in the /stories call below.
+    const readiness = await waitForVideoReady(mediaId, opts.accessToken);
+    if (!readiness.ready) {
+      const reason =
+        readiness.error ??
+        (readiness.lastStatus === "error"
+          ? "Facebook reported an error while processing the uploaded video."
+          : "Facebook did not finish processing the uploaded video in time.");
+      logger.error({ pageId: opts.pageId, mediaId, readiness }, "Facebook Story video never became ready");
+      return { success: false, errorMessage: `Story video not ready: ${reason}`, rawResponse: readiness };
+    }
   } else {
     const uploadRes = await fetch(`${GRAPH}/${opts.pageId}/photos`, {
       method: "POST",
