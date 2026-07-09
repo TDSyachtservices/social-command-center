@@ -7,7 +7,7 @@ import { PlatformCaptionTabs } from "./PlatformCaptionTabs";
 import { SocialPreviewPanel } from "./SocialPreviewPanel";
 import { HashtagPicker } from "./HashtagPicker";
 import { MentionPicker } from "./MentionPicker";
-import { PostTypeSelector, type PostType } from "./PostTypeSelector";
+import { PostTypeSelector, getAllowedPostTypes, type PostType } from "./PostTypeSelector";
 import { AlbumUploader } from "./AlbumUploader";
 import { EventFields, type EventMeta } from "./EventFields";
 import { Input } from "@/components/ui/input";
@@ -74,6 +74,16 @@ export function PostComposer({ editPostId }: PostComposerProps) {
       if (api !== null) setAccounts(api.filter((a) => a.connectionStatus === "connected"));
     });
   }, []);
+
+  // If the platform selection changes such that the current post type is no
+  // longer supported by every selected platform, fall back to Standard
+  // rather than leaving an invalid combination selected. Skip this while a
+  // post is still loading for edit, so we don't clobber the restored type.
+  useEffect(() => {
+    if (isLoadingPost) return;
+    const allowed = getAllowedPostTypes(platforms);
+    if (!allowed.includes(postType)) setPostType("standard");
+  }, [platforms, isLoadingPost]);
 
   useEffect(() => {
     if (!editPostId) return;
