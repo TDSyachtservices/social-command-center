@@ -137,15 +137,20 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
       // adapter (e.g. Facebook fetching `file_url`). It gets swapped below for the
       // real, permanent server URL as soon as the upload finishes. Submitting the
       // post before that swap happens must be blocked (see onUploadPendingChange).
+      // This block is held (via onUploadPendingChange(true)) from the moment the
+      // blob: URL is selected until it is swapped for a real URL — including
+      // every failure path — so a broken upload can never be silently saved
+      // (e.g. via "Save Draft") with an unusable blob: link. Only handleRemove()
+      // clears the block on failure.
       onMediaSelect(blobUrl, mediaType);
+      setIsPersisting(true);
+      onUploadPendingChange?.(true);
 
       if (mediaType === "video") {
         // Videos upload directly to R2 via a presigned URL — the bytes never
         // pass through our server. This is awaited (not fire-and-forget) so we
         // can replace the temporary blob URL with the real, durable one — and
         // block publishing until that happens (see onUploadPendingChange).
-        setIsPersisting(true);
-        onUploadPendingChange?.(true);
         toast({ title: "Uploading video…", description: "This may take a moment for larger files." });
         try {
           const confirmed = await uploadViaPresignedUrl(file, {
@@ -165,6 +170,8 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
               previewUrl: confirmed.originalUrl,
             });
             toast({ title: "Video uploaded", description: `${file.name} saved to durable storage.` });
+            setIsPersisting(false);
+            onUploadPendingChange?.(false);
           } else {
             setUploadFailed(true);
             toast({
@@ -172,6 +179,10 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
               description: `${file.name} could not be saved to storage. Remove it and try again before publishing.`,
               variant: "destructive",
             });
+            setIsPersisting(false);
+            // Keep pending=true: this media is a dead blob: URL that can never
+            // be published, so Save Draft must stay blocked too, not just
+            // Publish/Schedule. Only handleRemove() clears the block.
           }
         } catch {
           setUploadFailed(true);
@@ -180,9 +191,7 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
             description: `${file.name} could not be saved to storage. Remove it and try again before publishing.`,
             variant: "destructive",
           });
-        } finally {
           setIsPersisting(false);
-          onUploadPendingChange?.(false);
         }
         return;
       }
@@ -207,17 +216,17 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
         });
         toast({ title: "Media saved to library", description: `Uploading original file…` });
 
-        setIsPersisting(true);
-        onUploadPendingChange?.(true);
         // Upload the actual bytes to durable storage. Pass an empty selectedVersions
         // array so no platform crops are generated now — they can be generated later
         // from the Media Library if needed. This is awaited (not fire-and-forget) so
         // we can replace the temporary blob URL with the real, permanent one — and
         // block publishing until that happens.
         uploadFile(result.assetId, file, []).then((processed) => {
+          setIsPersisting(false);
           if (processed && processed.originalUrl) {
             setPreview(processed.originalUrl);
             onMediaSelect(processed.originalUrl, mediaType);
+            onUploadPendingChange?.(false);
           } else {
             setUploadFailed(true);
             toast({
@@ -225,17 +234,18 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
               description: `${file.name} could not be saved to the server. Remove it and try again before publishing.`,
               variant: "destructive",
             });
+            // Keep pending=true: this media is a dead blob: URL that can
+            // never be published, so Save Draft must stay blocked too, not
+            // just Publish/Schedule. Only handleRemove() clears the block.
           }
         }).catch(() => {
+          setIsPersisting(false);
           setUploadFailed(true);
           toast({
             title: "Upload failed",
             description: `${file.name} could not be saved to the server. Remove it and try again before publishing.`,
             variant: "destructive",
           });
-        }).finally(() => {
-          setIsPersisting(false);
-          onUploadPendingChange?.(false);
         });
       } else {
         setUploadFailed(true);
