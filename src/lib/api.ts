@@ -1,0 +1,997 @@
+/**
+ * API client for the Social Command Center backend.
+ *
+ * All functions attempt to fetch from VITE_API_BASE_URL first.
+ * On success they return typed data.
+ * On failure (network error, non-2xx, or VITE_API_BASE_URL not set) they
+ * return null — callers are responsible for falling back to mock data.
+ */
+
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+type ApiResponse<T> =
+  | { success: true; data: T; meta?: Record<string, unknown> }
+  | { success: false; error: { code: string; message: string } };
+
+async function apiFetch<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<{ data: T; ok: true } | { ok: false; error: string; status?: number }> {
+  if (!BASE_URL) return { ok: false, error: "VITE_API_BASE_URL not set" };
+
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
+      ...options,
+    });
+
+    const json: ApiResponse<T> = await res.json();
+
+    if (!res.ok || !json.success) {
+      const msg = json.success ? "Non-2xx response" : json.error.message;
+      return { ok: false, error: msg, status: res.status };
+    }
+
+    return { ok: true, data: (json as { success: true; data: T }).data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Network error" };
+  }
+}
+
+// ─── Posts ───────────────────────────────────────────────────────────────────
+
+export interface ApiPost {
+  id: string;
+  title: string;
+  masterCaption: string;
+  status: string;
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  postType: string;
+  additionalMediaUrls: string[];
+  postMetadataJson: Record<string, unknown> | null;
+  platforms: Array<{ platform: string; status: string; accountId: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listPosts(params?: {
+  status?: string;
+  platform?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ApiPost[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.q) qs.set("q", params.q);
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const result = await apiFetch<ApiPost[]>(`/api/posts?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getPost(id: string): Promise<ApiPost | null> {
+  const result = await apiFetch<ApiPost>(`/api/posts/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function createPost(body: {
+  title: string;
+  masterCaption: string;
+  platforms: string[];
+  accountIds: string[];
+  status?: string;
+  scheduledAt?: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  postType?: string;
+  additionalMediaUrls?: string[];
+  postMetadataJson?: Record<string, unknown> | null;
+  platformMedia?: Array<{ platform: string; mediaUrl?: string | null; mediaType?: string | null; platformCaption?: string | null }>;
+}): Promise<ApiPost | null> {
+  const result = await apiFetch<ApiPost>("/api/posts", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function updatePost(
+  id: string,
+  body: Partial<Parameters<typeof createPost>[0]>,
+): Promise<ApiPost | null> {
+  const result = await apiFetch<ApiPost>(`/api/posts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function deletePost(id: string): Promise<boolean> {
+  const result = await apiFetch<{ deleted: boolean }>(`/api/posts/${id}`, { method: "DELETE" });
+  return result.ok && result.data.deleted;
+}
+
+export async function retryPost(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/posts/${id}/retry`, { method: "POST" });
+  return result.ok;
+}
+
+export async function schedulePost(postId: string, scheduledAt: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/posts/${postId}/schedule`, {
+    method: "POST",
+    body: JSON.stringify({ scheduledAt }),
+  });
+  return result.ok;
+}
+
+export async function publishPost(postId: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/posts/${postId}/publish`, { method: "POST" });
+  return result.ok;
+}
+
+/**
+ * Publishing is asynchronous on the server (POST /publish just flips the post
+ * to PUBLISHING and returns immediately). This polls GET /api/posts/:id until
+ * the post reaches a terminal status (PUBLISHED/FAILED) or the poll window
+ * runs out, so callers can show the real outcome instead of trusting the
+ * immediate HTTP response or requiring the user to manually refresh.
+ */
+export async function pollUntilPublishSettled(
+  postId: string,
+  { maxAttempts = 40, intervalMs = 2000 }: { maxAttempts?: number; intervalMs?: number } = {},
+): Promise<ApiPost | null> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, intervalMs));
+    const post = await getPost(postId);
+    if (post && post.status !== "PUBLISHING") return post;
+  }
+  return await getPost(postId);
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+export interface ApiAccount {
+  id: string;
+  platform: string;
+  accountName: string;
+  accountId: string;
+  connectionStatus: string;
+  lastSync: string | null;
+  postingCapability: boolean;
+  commentReadCapability: boolean;
+  commentReplyCapability: boolean;
+  moderationCapability: boolean;
+  scopes: string[];
+  tokenExpiresAt: string | null;
+}
+
+export async function listAccounts(): Promise<ApiAccount[] | null> {
+  const result = await apiFetch<ApiAccount[]>("/api/accounts");
+  return result.ok ? result.data : null;
+}
+
+export interface ApiInsightsDailyPoint {
+  date: string;
+  value: number;
+}
+
+export interface ApiFacebookInsights {
+  accountId: string;
+  pageId: string;
+  accountName: string;
+  followers: number;
+  followerGrowth30d: number;
+  reach30d: number;
+  impressions30d: number;
+  engagedUsers30d: number;
+  engagementRate: number;
+  dailyReach: ApiInsightsDailyPoint[];
+  dailyImpressions: ApiInsightsDailyPoint[];
+  dailyEngaged: ApiInsightsDailyPoint[];
+}
+
+export async function getFacebookInsights(
+  accountId: string,
+): Promise<{ data: ApiFacebookInsights } | { error: string; status?: number } | null> {
+  const result = await apiFetch<ApiFacebookInsights>(`/api/insights/facebook/${accountId}`);
+  if (result.ok) return { data: result.data };
+  return { error: result.error, status: result.status };
+}
+
+export interface ApiInstagramInsights {
+  accountId: string;
+  igUserId: string;
+  accountName: string;
+  followers: number;
+  followerGrowth30d: number;
+  reach30d: number;
+  impressions30d: number;
+  profileViews30d: number;
+  dailyReach: ApiInsightsDailyPoint[];
+  dailyImpressions: ApiInsightsDailyPoint[];
+  dailyProfileViews: ApiInsightsDailyPoint[];
+}
+
+export async function getInstagramInsights(
+  accountId: string,
+): Promise<{ data: ApiInstagramInsights } | { error: string; status?: number } | null> {
+  const result = await apiFetch<ApiInstagramInsights>(`/api/insights/instagram/${accountId}`);
+  if (result.ok) return { data: result.data };
+  return { error: result.error, status: result.status };
+}
+
+export async function getAccount(id: string): Promise<ApiAccount | null> {
+  const result = await apiFetch<ApiAccount>(`/api/accounts/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function connectAccountMock(body: {
+  platform: string;
+  accountName: string;
+  accountId: string;
+}): Promise<ApiAccount | null> {
+  const result = await apiFetch<ApiAccount>("/api/accounts/connect-mock", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function disconnectAccount(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/accounts/${id}/disconnect`, { method: "POST" });
+  return result.ok;
+}
+
+export async function checkAccount(id: string): Promise<{ status: string; expiresAt?: string } | null> {
+  const result = await apiFetch<{ status: string; expiresAt?: string }>(`/api/accounts/${id}/check`);
+  return result.ok ? result.data : null;
+}
+
+export async function getAccountCapabilities(id: string): Promise<{
+  posting: boolean;
+  commentRead: boolean;
+  commentReply: boolean;
+  moderation: boolean;
+} | null> {
+  const result = await apiFetch<{
+    posting: boolean;
+    commentRead: boolean;
+    commentReply: boolean;
+    moderation: boolean;
+  }>(`/api/accounts/${id}/capabilities`);
+  return result.ok ? result.data : null;
+}
+
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+
+export async function publishNow(postId: string): Promise<boolean> {
+  const result = await apiFetch<{ queued: boolean }>("/api/scheduler/publish-now", {
+    method: "POST",
+    body: JSON.stringify({ postId }),
+  });
+  return result.ok;
+}
+
+export async function cancelSchedule(postId: string): Promise<boolean> {
+  const result = await apiFetch<unknown>("/api/scheduler/cancel", {
+    method: "POST",
+    body: JSON.stringify({ postId }),
+  });
+  return result.ok;
+}
+
+export async function getSchedulerQueue(): Promise<ApiPost[] | null> {
+  const result = await apiFetch<ApiPost[]>("/api/scheduler/queue");
+  return result.ok ? result.data : null;
+}
+
+// ─── Inbox ────────────────────────────────────────────────────────────────────
+
+export interface ApiComment {
+  id: string;
+  platform: string;
+  accountName: string;
+  commenterName: string;
+  commenterHandle: string | null;
+  commentText: string;
+  originalPostTitle: string | null;
+  originalPostCaption: string | null;
+  status: string;
+  priority: string;
+  replyCount: number;
+  assignedUser: string | null;
+  timestamp: string;
+  replies: Array<{ id: string; replyText: string; sentBy: string | null; sentAt: string; status: string }>;
+  notes: Array<{ id: string; noteText: string; createdBy: string | null; createdAt: string }>;
+}
+
+export async function listComments(params?: {
+  status?: string;
+  platform?: string;
+  priority?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ApiComment[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.status && params.status !== "all") qs.set("status", params.status.toUpperCase());
+  if (params?.platform) qs.set("platform", params.platform.toUpperCase());
+  if (params?.priority) qs.set("priority", params.priority.toUpperCase());
+  if (params?.q) qs.set("q", params.q);
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const result = await apiFetch<ApiComment[]>(`/api/inbox?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getComment(id: string): Promise<ApiComment | null> {
+  const result = await apiFetch<ApiComment>(`/api/inbox/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function updateComment(
+  id: string,
+  body: { status?: string; priority?: string; assignedUser?: string | null },
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return result.ok;
+}
+
+export async function hideComment(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${id}/hide`, { method: "PATCH" });
+  return result.ok;
+}
+
+export async function assignComment(id: string, assignedUser: string | null): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${id}/assign`, {
+    method: "PATCH",
+    body: JSON.stringify({ assignedUser }),
+  });
+  return result.ok;
+}
+
+export async function sendReply(commentId: string, replyText: string): Promise<{ ok: boolean; fbStatus?: string; fbError?: string }> {
+  const result = await apiFetch<{ fbStatus?: string; fbError?: string }>(`/api/inbox/${commentId}/replies`, {
+    method: "POST",
+    body: JSON.stringify({ replyText }),
+  });
+  if (!result.ok) return { ok: false };
+  return { ok: true, fbStatus: result.data?.fbStatus, fbError: result.data?.fbError };
+}
+
+export async function addNote(commentId: string, noteText: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/inbox/${commentId}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ noteText }),
+  });
+  return result.ok;
+}
+
+export async function triggerSyncMock(): Promise<{ synced: number } | null> {
+  const result = await apiFetch<{ synced: number }>("/api/inbox/sync-mock", { method: "POST" });
+  return result.ok ? result.data : null;
+}
+
+export interface SyncResult {
+  accounts: number;
+  totalSynced: number;
+  totalNew: number;
+  results: Array<{ accountId: string; postId: string; synced: number; error?: string }>;
+}
+
+export async function syncFacebookInbox(): Promise<SyncResult | null> {
+  const result = await apiFetch<SyncResult>("/api/inbox/sync", { method: "POST" });
+  return result.ok ? result.data : null;
+}
+
+export function isApiConfigured(): boolean {
+  return Boolean((import.meta.env.VITE_API_BASE_URL ?? "").trim());
+}
+
+export async function getInboxSyncLogs(): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>("/api/inbox/sync-logs");
+  return result.ok ? result.data : null;
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+
+export interface ApiPublishLog {
+  id: string;
+  postTitle: string;
+  platform: string;
+  action: string;
+  status: string;
+  timestamp: string;
+  errorMessage: string | null;
+  externalPostId: string | null;
+}
+
+export async function listPublishLogs(params?: {
+  status?: string;
+  platform?: string;
+  page?: number;
+}): Promise<ApiPublishLog[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<ApiPublishLog[]>(`/api/logs/publish?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function listCommentLogs(params?: {
+  status?: string;
+  platform?: string;
+  page?: number;
+}): Promise<unknown[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<unknown[]>(`/api/logs/comment?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function listAuditLogs(params?: {
+  page?: number;
+}): Promise<unknown[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<unknown[]>(`/api/logs/audit?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export interface ApiSettings {
+  [key: string]: unknown;
+}
+
+export async function getSettings(): Promise<ApiSettings | null> {
+  const result = await apiFetch<ApiSettings>("/api/settings");
+  return result.ok ? result.data : null;
+}
+
+export async function updateSettings(key: string, value: unknown): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/settings/${key}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+  return result.ok;
+}
+
+// ─── Media ────────────────────────────────────────────────────────────────────
+
+export interface ApiMediaSpec {
+  platform: string;   // e.g. "FACEBOOK"
+  placement: string;  // e.g. "feed_portrait"
+  width: number;
+  height: number;
+  aspectRatio: string;
+  format: string;
+  mimeType: string;
+}
+
+export async function getMediaSpecs(): Promise<ApiMediaSpec[]> {
+  const result = await apiFetch<ApiMediaSpec[]>("/api/media/specs");
+  return result.ok ? result.data : [];
+}
+
+export interface ApiMediaVersion {
+  id: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+  aspectRatio: string;
+  format: string;
+  mimeType: string;
+  publicUrl: string | null;
+  storageKey: string | null;
+  processingStatus: string;
+  cropMode: string;
+  focalPointJson: unknown;
+  qualityScore: number | null;
+  qualityScoreLabel: string | null;
+  qualityScoreReason: string | null;
+  validationStatus: string;
+}
+
+export interface ApiMediaAsset {
+  id: string;
+  originalFileName: string;
+  originalFileType: string;
+  originalMimeType: string;
+  originalSizeBytes: number;
+  originalWidth: number | null;
+  originalHeight: number | null;
+  originalPublicUrl: string | null;
+  processingStatus: string;
+  validationStatus: string;
+  createdAt: string;
+  versions?: ApiMediaVersion[];
+}
+
+export async function listMedia(params?: {
+  type?: string;
+  page?: number;
+}): Promise<ApiMediaAsset[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.type) qs.set("type", params.type);
+  if (params?.page) qs.set("page", String(params.page));
+
+  const result = await apiFetch<ApiMediaAsset[]>(`/api/media?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getMediaAsset(id: string): Promise<ApiMediaAsset | null> {
+  const result = await apiFetch<ApiMediaAsset>(`/api/media/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getMediaVersions(id: string): Promise<unknown[] | null> {
+  const result = await apiFetch<unknown[]>(`/api/media/${id}/versions`);
+  return result.ok ? result.data : null;
+}
+
+export async function patchFocalPoint(
+  assetId: string,
+  versionId: string,
+  x: number,
+  y: number,
+): Promise<ApiMediaVersion | null> {
+  const result = await apiFetch<ApiMediaVersion>(
+    `/api/media/${assetId}/version/${versionId}/focal-point`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    },
+  );
+  return result.ok ? result.data : null;
+}
+
+export async function processMedia(
+  assetId: string,
+  selectedVersions?: { platform: string; placement: string }[],
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/media/${assetId}/process`, {
+    method: "POST",
+    body: JSON.stringify(selectedVersions ? { selectedVersions } : {}),
+  });
+  return result.ok;
+}
+
+export interface DeleteMediaResult {
+  deleted: boolean;
+  warnings?: string[];
+}
+
+export async function deleteMedia(id: string): Promise<DeleteMediaResult> {
+  const result = await apiFetch<{ deleted: boolean; warnings?: string[] }>(`/api/media/${id}`, {
+    method: "DELETE",
+  });
+  if (!result.ok) return { deleted: false };
+  return { deleted: result.data.deleted, warnings: result.data.warnings };
+}
+
+export async function duplicateMedia(id: string): Promise<ApiMediaAsset | null> {
+  const result = await apiFetch<ApiMediaAsset>(`/api/media/${id}/duplicate`, { method: "POST" });
+  return result.ok ? result.data : null;
+}
+
+export interface AiScoreResult {
+  label: "Excellent" | "Good" | "Needs Review" | "Poor";
+  score: number;
+  reason: string;
+}
+
+/**
+ * Score a single cropped image version using GPT vision via the Railway server.
+ */
+export async function scoreImageWithAi(params: {
+  imageUrl: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+}): Promise<AiScoreResult | null> {
+  const result = await apiFetch<AiScoreResult>("/api/ai/score-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return result.ok ? result.data : null;
+}
+
+/**
+ * Write an AI quality score back to a specific version on the Railway server.
+ */
+export async function patchVersionScore(
+  versionId: string,
+  score: AiScoreResult,
+): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/media/version/${versionId}/score`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      qualityScore: score.score,
+      qualityScoreLabel: score.label,
+      qualityScoreReason: score.reason,
+    }),
+  });
+  return result.ok;
+}
+
+export interface UploadIntentResult {
+  assetId: string;
+  uploadUrl: string;
+}
+
+export async function uploadMediaIntent(body: {
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  originalWidth?: number;
+  originalHeight?: number;
+}): Promise<UploadIntentResult | null> {
+  const result = await apiFetch<UploadIntentResult>("/api/media/upload-intent", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface UploadFileVersion {
+  id: string;
+  platform: string;
+  placement: string;
+  width: number;
+  height: number;
+  url: string;
+  qualityScore: number | null;
+  qualityScoreLabel: string | null;
+}
+
+export interface UploadFileResult {
+  assetId: string;
+  originalUrl: string;
+  versions: UploadFileVersion[];
+}
+
+/**
+ * Upload a file to the server for processing.
+ * The file is read as base64 and sent as JSON — no multipart form needed.
+ * The server runs ImageMagick to produce per-platform resized versions and
+ * returns the full version manifest once processing completes.
+ */
+export async function uploadFile(
+  assetId: string,
+  file: File,
+  selectedVersions?: { platform: string; placement: string }[],
+): Promise<UploadFileResult | null> {
+  // Read the file as a base64 data-URL, then strip the header prefix.
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const result = await apiFetch<UploadFileResult>(`/api/media/${assetId}/upload-file`, {
+    method: "POST",
+    body: JSON.stringify({
+      fileData: base64,
+      mimeType: file.type,
+      fileName: file.name,
+      ...(selectedVersions ? { selectedVersions } : {}),
+    }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface EnsureVersionResult {
+  assetId: string;
+  generated: boolean;
+  version: UploadFileVersion;
+}
+
+/**
+ * Get (or, if it doesn't exist yet, generate on demand and persist) a single
+ * platform/placement crop for an asset. Used when composing a post needs a
+ * size the user didn't pick at upload time — never regenerates or disturbs
+ * any other saved version.
+ */
+export async function ensureMediaVersion(
+  assetId: string,
+  platform: string,
+  placement: string,
+): Promise<EnsureVersionResult | null> {
+  const result = await apiFetch<EnsureVersionResult>(`/api/media/${assetId}/versions/ensure`, {
+    method: "POST",
+    body: JSON.stringify({ platform, placement }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface PresignedUploadUrlResult {
+  uploadUrl: string;
+  key: string;
+  publicUrl: string;
+}
+
+/** Ask the server for a presigned R2 PUT URL for this file's content type/size. */
+export async function getUploadUrl(file: File): Promise<PresignedUploadUrlResult | null> {
+  const result = await apiFetch<PresignedUploadUrlResult>("/api/media/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export interface ConfirmUploadResult {
+  assetId: string;
+  originalUrl: string;
+}
+
+/** Tell the server an upload to R2 finished, so it can persist a MediaAsset row. */
+export async function confirmUpload(body: {
+  key: string;
+  publicUrl: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  originalWidth?: number;
+  originalHeight?: number;
+  originalDurationSeconds?: number;
+}): Promise<ConfirmUploadResult | null> {
+  const result = await apiFetch<ConfirmUploadResult>("/api/media/confirm", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+/**
+ * Upload a file directly to R2 via a presigned URL, bypassing our server for
+ * the file bytes (important for video — large files never touch our request
+ * body or count against its JSON size limit). Confirms with the server once
+ * the PUT succeeds so a MediaAsset row only gets created for uploads that
+ * actually completed.
+ */
+export async function uploadViaPresignedUrl(
+  file: File,
+  extras?: { originalWidth?: number; originalHeight?: number; originalDurationSeconds?: number },
+): Promise<ConfirmUploadResult | null> {
+  const presigned = await getUploadUrl(file);
+  if (!presigned) return null;
+
+  const putRes = await fetch(presigned.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!putRes.ok) return null;
+
+  return confirmUpload({
+    key: presigned.key,
+    publicUrl: presigned.publicUrl,
+    fileName: file.name,
+    mimeType: file.type,
+    fileSizeBytes: file.size,
+    ...extras,
+  });
+}
+
+// ─── AI ───────────────────────────────────────────────────────────────────────
+
+export async function generateCaption(body: {
+  postTitle: string;
+  platforms: string[];
+  tone?: string;
+  additionalContext?: string;
+}): Promise<{ caption: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ caption: string; mock?: boolean }>("/api/ai/generate-caption", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function improveCaption(body: {
+  caption: string;
+  instructions: string;
+  platform?: string;
+}): Promise<{ caption: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ caption: string; mock?: boolean }>("/api/ai/improve-caption", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function generateReply(body: {
+  commentText: string;
+  commenterName?: string;
+  platform?: string;
+  tone?: string;
+  postTitle?: string;
+  postCaption?: string;
+}): Promise<{ reply: string; mock?: boolean } | null> {
+  const result = await apiFetch<{ reply: string; mock?: boolean }>("/api/ai/generate-reply", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function translateComment(text: string): Promise<{ detected: string; translation: string } | null> {
+  const result = await apiFetch<{ detected: string; translation: string }>("/api/ai/translate", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function analyzeComment(body: {
+  commentText: string;
+  platform: string;
+}): Promise<{
+  sentiment: string;
+  priority: string;
+  category: string;
+  suggestedAction: string;
+  mock?: boolean;
+} | null> {
+  const result = await apiFetch<{
+    sentiment: string;
+    priority: string;
+    category: string;
+    suggestedAction: string;
+    mock?: boolean;
+  }>("/api/ai/analyze-comment", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function getAiStatus(): Promise<{
+  connected: boolean;
+  endpoint?: string;
+  models?: unknown[];
+} | null> {
+  const result = await apiFetch<{ connected: boolean; endpoint?: string; models?: unknown[] }>(
+    "/api/ai/status",
+  );
+  return result.ok ? result.data : null;
+}
+
+export async function suggestHashtags(body: {
+  category?: string;
+  platform?: string;
+  count?: number;
+}): Promise<{ suggestions: string[] } | { error: string }> {
+  const result = await apiFetch<{ suggestions: string[] }>("/api/ai/suggest-hashtags", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : { error: result.error };
+}
+
+export interface MentionSuggestion {
+  handle: string;
+  name?: string;
+  profilePictureUrl?: string;
+  followersCount?: number;
+  reason?: string;
+  verified: boolean;
+}
+
+export async function suggestMentions(body: {
+  category?: string;
+  platform: "FACEBOOK" | "INSTAGRAM";
+  count?: number;
+}): Promise<{ suggestions: MentionSuggestion[] } | { error: string }> {
+  const result = await apiFetch<{ suggestions: MentionSuggestion[] }>("/api/ai/suggest-mentions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : { error: result.error };
+}
+
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface ApiNotification {
+  id: string;
+  platform: string;
+  accountId: string | null;
+  externalId: string | null;
+  type: string;
+  title: string;
+  body: string | null;
+  isRead: boolean;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export async function listNotifications(params?: {
+  platform?: string;
+  type?: string;
+  unreadOnly?: boolean;
+  page?: number;
+  limit?: number;
+}): Promise<ApiNotification[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.platform) qs.set("platform", params.platform);
+  if (params?.type) qs.set("type", params.type);
+  if (params?.unreadOnly) qs.set("unreadOnly", "true");
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const result = await apiFetch<ApiNotification[]>(`/api/notifications?${qs}`);
+  return result.ok ? result.data : null;
+}
+
+export async function getNotificationUnreadCount(platform?: string): Promise<number> {
+  const qs = platform ? `?platform=${platform}` : "";
+  const result = await apiFetch<{ count: number }>(`/api/notifications/unread-count${qs}`);
+  return result.ok ? result.data.count : 0;
+}
+
+export async function markNotificationRead(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/notifications/${id}/read`, { method: "PATCH" });
+  return result.ok;
+}
+
+export async function markAllNotificationsRead(platform?: string): Promise<boolean> {
+  const result = await apiFetch<unknown>("/api/notifications/read-all", {
+    method: "POST",
+    body: JSON.stringify(platform ? { platform } : {}),
+  });
+  return result.ok;
+}
+
+export async function getLatestPlatformStats(
+  platform: string,
+  accountId: string,
+): Promise<number | null> {
+  const qs = new URLSearchParams({ platform, accountId });
+  const result = await apiFetch<Array<{ followersCount: number; polledAt: string }>>(
+    `/api/notifications/platform-stats?${qs}`,
+  );
+  if (!result.ok || result.data.length === 0) return null;
+  return result.data[0].followersCount;
+}
+
+// ─── Health check ─────────────────────────────────────────────────────────────
+
+// Health endpoint returns the direct { status, db } shape (not the success envelope).
+export async function checkHealth(): Promise<{ ok: boolean; db?: string }> {
+  if (!BASE_URL) return { ok: false };
+  try {
+    const res = await fetch(`${BASE_URL}/api/health`);
+    if (!res.ok) return { ok: false };
+    const json = (await res.json()) as { status: string; db: string };
+    return { ok: json.status === "ok", db: json.db };
+  } catch {
+    return { ok: false };
+  }
+}
