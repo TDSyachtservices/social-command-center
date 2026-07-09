@@ -49,6 +49,7 @@ export function PlatformMediaTabs({ platforms, platformMedia, onChange, onApplyT
             <TabsContent key={platform} value={platform} className="space-y-3 mt-4">
               <MediaUploadCard
                 label=""
+                platform={platform}
                 initialPreview={value?.url ?? null}
                 initialType={value?.type ?? "image"}
                 onMediaSelect={(url, type) => onChange(platform, url ? { url, type } : null)}

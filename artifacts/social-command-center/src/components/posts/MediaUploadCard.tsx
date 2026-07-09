@@ -6,6 +6,8 @@ import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { MediaLibraryPickerModal } from "./MediaLibraryPickerModal";
+import type { Platform } from "@/data/mockPosts";
+import { validateMediaFile } from "@/lib/mediaRules";
 
 interface MediaUploadCardProps {
   onMediaSelect: (url: string, type: "image" | "video") => void;
@@ -13,6 +15,8 @@ interface MediaUploadCardProps {
   initialPreview?: string | null;
   initialType?: "image" | "video";
   label?: string;
+  /** When set, the file is validated against this platform's hard format/size/aspect-ratio rules before it can be attached. */
+  platform?: Platform;
 }
 
 const MEDIA_LIBRARY_KEY = "scc:media-library:v1";
@@ -63,13 +67,16 @@ function checkCompat(
   return diff <= 0.15 ? "compatible" : "will-crop";
 }
 
-function measureDimensions(file: File): Promise<{ width: number; height: number }> {
+function measureDimensions(file: File): Promise<{ width: number; height: number; durationSec?: number }> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     if (file.type.startsWith("video/")) {
       const video = document.createElement("video");
       video.preload = "metadata";
-      video.onloadedmetadata = () => { resolve({ width: video.videoWidth, height: video.videoHeight }); URL.revokeObjectURL(url); };
+      video.onloadedmetadata = () => {
+        resolve({ width: video.videoWidth, height: video.videoHeight, durationSec: video.duration });
+        URL.revokeObjectURL(url);
+      };
       video.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url); };
       video.src = url;
     } else {
@@ -107,7 +114,7 @@ const compatLabel: Record<CompatStatus, { text: string; dot: string; textColor: 
   "too-small": { text: "Too small",     dot: "bg-red-500",   textColor: "text-red-600 dark:text-red-400" },
 };
 
-export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialPreview = null, initialType = "image", label = "Media Content" }: MediaUploadCardProps) {
+export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialPreview = null, initialType = "image", label = "Media Content", platform }: MediaUploadCardProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [isPersisting, setIsPersisting] = useState(false);
@@ -126,10 +133,32 @@ export function MediaUploadCard({ onMediaSelect, onUploadPendingChange, initialP
     setUploadFailed(false);
     try {
       const dims = await measureDimensions(file);
+      const mediaType: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+
+      if (platform) {
+        const validation = validateMediaFile({
+          platform,
+          mediaType,
+          file,
+          width: dims.width,
+          height: dims.height,
+          durationSec: dims.durationSec,
+        });
+        if (!validation.valid) {
+          setIsUploading(false);
+          toast({
+            title: `Doesn't meet ${platform}'s requirements`,
+            description: validation.reasons.join(" "),
+            variant: "destructive",
+          });
+          e.target.value = "";
+          return;
+        }
+      }
+
       setDimensions(dims);
 
       const blobUrl = URL.createObjectURL(file);
-      const mediaType = file.type.startsWith("video/") ? "video" : "image";
       setPreview(blobUrl);
       setPreviewType(mediaType);
       // NOTE: this blob: URL is only a placeholder for the immediate preview — it
