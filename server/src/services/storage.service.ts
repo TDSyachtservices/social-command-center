@@ -31,8 +31,8 @@ export const ALLOWED_CONTENT_TYPES = [
 export type AllowedContentType = (typeof ALLOWED_CONTENT_TYPES)[number];
 
 const MAX_SIZE_BYTES: Record<"image" | "video", number> = {
-  image: 10 * 1024 * 1024, // 10MB
-  video: 100 * 1024 * 1024, // 100MB
+  image: 10 * 1024 * 1024,          // 10 MB — covers FB (10 MB) and IG (8 MB, enforced client-side)
+  video: 1 * 1024 * 1024 * 1024,   // 1 GB — matches Instagram's cap (the stricter of FB/IG)
 };
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
