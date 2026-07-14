@@ -11,7 +11,7 @@ interface ReplyComposerProps {
   commentText: string;
   postTitle?: string;
   postCaption?: string;
-  onSuccess: (fbStatus?: string, fbError?: string) => void;
+  onSuccess: (fbStatus?: string, fbError?: string, replyText?: string) => void;
 }
 
 export function ReplyComposer({ commentId, commentText, postTitle, postCaption, onSuccess }: ReplyComposerProps) {
@@ -57,11 +57,12 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
     if (!reply.trim()) return;
     setIsSending(true);
     setError(null);
+    const sentText = reply;
     try {
       const result = await sendReply(commentId, reply);
       if (!result.ok) throw new Error("Failed to send reply");
       setReply("");
-      onSuccess(result.fbStatus, result.fbError);
+      onSuccess(result.fbStatus, result.fbError, sentText);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reply");
     } finally {

@@ -10,6 +10,11 @@ import { updateComment, isApiConfigured, translateComment, addNote } from "@/lib
 import { mockUpdateCommentStatus } from "@/lib/mockActions";
 import { toast } from "@/hooks/use-toast";
 
+interface SentReply {
+  text: string;
+  sentAt: string;
+}
+
 interface CommentDetailPanelProps {
   comment: MockComment;
   onFieldChange?: (fields: Partial<Pick<MockComment, "status" | "priority" | "assignedUser">>) => void;
@@ -26,6 +31,7 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
   const [saving, setSaving] = useState(false);
   const [translation, setTranslation] = useState<{ detected: string; text: string } | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [sentReplies, setSentReplies] = useState<SentReply[]>([]);
 
   // Reset all per-comment local state when the selected comment changes so
   // notes typed for one comment don't bleed onto the next one.
@@ -34,6 +40,7 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
     setSavedNotes(comment.notes ?? []);
     setTranslation(null);
     setIsTranslating(false);
+    setSentReplies([]);
   }, [comment.id]);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -242,6 +249,22 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
             </div>
           </div>
 
+          {sentReplies.map((reply, i) => (
+            <div key={i} className="flex gap-4 justify-end">
+              <div className="flex-1 max-w-[80%] space-y-1 flex flex-col items-end">
+                <div className="bg-primary text-primary-foreground p-3 rounded-2xl rounded-tr-none text-sm">
+                  {reply.text}
+                </div>
+                <span className="text-[10px] text-muted-foreground pr-1">
+                  You · {new Date(reply.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0 font-bold text-primary-foreground text-sm">
+                Me
+              </div>
+            </div>
+          ))}
+
           <div className="space-y-2 pt-4">
             <label className="text-xs font-medium text-muted-foreground">Internal Notes (Not visible to user)</label>
 
@@ -290,8 +313,10 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
             commentText={comment.commentText}
             postTitle={comment.originalPostTitle}
             postCaption={comment.originalPostCaption}
-            onSuccess={(fbStatus?: string, fbError?: string) => {
-              // Reply route already marks the comment REPLIED — just update local state
+            onSuccess={(fbStatus?: string, fbError?: string, replyText?: string) => {
+              if (replyText) {
+                setSentReplies(prev => [...prev, { text: replyText, sentAt: new Date().toISOString() }]);
+              }
               setStatus("replied" as MockComment["status"]);
               onFieldChange?.({ status: "replied" as MockComment["status"] });
               if (fbStatus === "failed") {
