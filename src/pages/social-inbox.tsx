@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSearch } from "wouter";
 import { MockComment } from "@/data/mockComments";
 import { CommentList } from "@/components/inbox/CommentList";
@@ -6,10 +6,8 @@ import { CommentDetailPanel } from "@/components/inbox/CommentDetailPanel";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, ArrowLeft, RefreshCw } from "lucide-react";
-import { syncFacebookInbox, isApiConfigured } from "@/lib/api";
-import { toast } from "@/hooks/use-toast";
-
-const AUTO_SYNC_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+import { isApiConfigured } from "@/lib/api";
+import { useInboxSync } from "@/hooks/use-inbox-sync";
 
 function useRelativeTime(date: Date | null): string {
   const [, setTick] = useState(0);
@@ -33,10 +31,8 @@ export default function SocialInbox() {
 
   const [selectedComment, setSelectedComment] = useState<MockComment | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
-  const [syncing, setSyncing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [lastSynced, setLastSynced] = useState<Date | null>(null);
-  const syncingRef = useRef(false); // prevents overlapping background syncs
+
+  const { syncing, lastSynced, refreshKey, sync } = useInboxSync();
 
   const handleSelectComment = (comment: MockComment) => {
     setSelectedComment(comment);
@@ -45,59 +41,13 @@ export default function SocialInbox() {
 
   const handleCommentFieldChange = (fields: Partial<Pick<MockComment, "status" | "priority" | "assignedUser">>) => {
     setSelectedComment(prev => prev ? { ...prev, ...fields } : prev);
-    setRefreshKey(k => k + 1);
   };
 
   const handleBack = () => {
     setMobileView("list");
   };
 
-  const runSync = useCallback(async (silent = false) => {
-    if (!isApiConfigured()) return;
-    if (syncingRef.current) return; // already in-flight
-    syncingRef.current = true;
-    setSyncing(true);
-    try {
-      const result = await syncFacebookInbox();
-      if (result) {
-        setLastSynced(new Date());
-        setRefreshKey(k => k + 1);
-        // Only show a toast when new comments actually arrived — skip it for
-        // background auto-syncs that found nothing new (silent or not).
-        if (result.totalNew > 0) {
-          toast({
-            title: silent ? "New comments" : "Sync complete",
-            description: `${result.totalNew} new comment${result.totalNew !== 1 ? "s" : ""} pulled from connected accounts.`,
-          });
-        }
-      } else if (!silent) {
-        toast({
-          title: "Sync unavailable",
-          description: "Could not reach the server.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setSyncing(false);
-      syncingRef.current = false;
-    }
-  }, []);
-
-  // Initial sync on mount
-  useEffect(() => {
-    runSync(true);
-  }, [runSync]);
-
-  // Background auto-sync every 2 minutes while the page is open
-  useEffect(() => {
-    if (!isApiConfigured()) return;
-    const id = setInterval(() => runSync(true), AUTO_SYNC_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [runSync]);
-
   const lastSyncedLabel = useRelativeTime(lastSynced);
-
-  const handleSync = () => runSync(false);
 
   return (
     <div className="flex flex-col h-full">
@@ -116,7 +66,7 @@ export default function SocialInbox() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleSync}
+              onClick={sync}
               disabled={syncing}
               className="gap-2"
             >
