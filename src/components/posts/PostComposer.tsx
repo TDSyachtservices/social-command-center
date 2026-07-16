@@ -185,24 +185,40 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   );
 
   const buildEffectiveCaption = () => {
-    const base = postType === "event" && eventMeta.eventDescription
+    // Return the master caption without hashtags — hashtags are per-platform and
+    // are baked into each platform's platformCaption by buildPlatformMedia().
+    return postType === "event" && eventMeta.eventDescription
       ? eventMeta.eventDescription
       : masterCaption;
-    const tags = platforms.flatMap((p) => platformHashtags[p] ?? []);
-    const uniqueTags = [...new Set(tags)];
-    if (uniqueTags.length === 0) return base;
-    return `${base}\n\n${uniqueTags.join(" ")}`;
   };
 
   const buildPlatformMedia = () =>
     platforms
-      .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p))
-      .map((p) => ({
-        platform: p.toUpperCase(),
-        mediaUrl: platformMedia[p]?.url ?? null,
-        mediaType: platformMedia[p]?.type ?? null,
-        platformCaption: platformCaptions[p]?.trim() || null,
-      }));
+      // Include any platform that has media, a custom caption, OR hashtags.
+      // Previously platforms with only hashtags were filtered out, silently
+      // dropping those hashtags from the published post.
+      .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p) || (platformHashtags[p] ?? []).length > 0)
+      .map((p) => {
+        const tags = platformHashtags[p] ?? [];
+        const base = platformCaptions[p]?.trim() || null;
+        // Bake hashtags into platformCaption so they survive the server's
+        // resolveCaption(platformCaption ?? masterCaption) fallback.
+        // If there's no custom caption, use masterCaption as the base so the
+        // platform gets its own copy with the right hashtags appended.
+        let platformCaption: string | null = base;
+        if (tags.length > 0) {
+          const captionBase = base ?? masterCaption;
+          platformCaption = captionBase.trim()
+            ? `${captionBase.trim()}\n\n${tags.join(" ")}`
+            : tags.join(" ");
+        }
+        return {
+          platform: p.toUpperCase(),
+          mediaUrl: platformMedia[p]?.url ?? null,
+          mediaType: platformMedia[p]?.type ?? null,
+          platformCaption,
+        };
+      });
 
   const buildPostMetadata = (): Record<string, unknown> | null => {
     const meta: Record<string, unknown> = {};
