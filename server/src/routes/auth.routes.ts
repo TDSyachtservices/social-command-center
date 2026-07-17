@@ -343,7 +343,9 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
     logger.info({ orgCount: orgs.length }, "LinkedIn org pages found");
 
     const canPost = grantedScopes.includes("w_organization_social") || grantedScopes.includes("w_member_social");
-    const canReadComments = grantedScopes.includes("r_organization_social");
+    // r_organization_social unlocks comment read on org pages; w_member_social covers personal posts
+    const canReadComments = grantedScopes.includes("r_organization_social") || grantedScopes.includes("w_member_social");
+    const canReplyComments = grantedScopes.includes("w_organization_social") || grantedScopes.includes("w_member_social");
 
     let connectedCount = 0;
 
@@ -361,7 +363,7 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
           tokenExpiresAt: expiresAt,
           postingCapability: canPost,
           commentReadCapability: canReadComments,
-          commentReplyCapability: false,
+          commentReplyCapability: canReplyComments,
           moderationCapability: false,
           lastSync: new Date(),
           scopes: grantedScopes,
@@ -391,8 +393,8 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
         tokenEncrypted: encryptedToken,
         tokenExpiresAt: expiresAt,
         postingCapability: grantedScopes.includes("w_member_social"),
-        commentReadCapability: false,
-        commentReplyCapability: false,
+        commentReadCapability: canReadComments,
+        commentReplyCapability: canReplyComments,
         moderationCapability: false,
         lastSync: new Date(),
         scopes: grantedScopes,
