@@ -35,7 +35,12 @@ function getRedirectUri(): string {
 }
 
 function getFrontendUrl(): string {
-  return (process.env.FRONTEND_URL ?? "http://localhost:5173").split(",")[0].trim();
+  const raw = (process.env.FRONTEND_URL ?? "http://localhost:5173").split(",")[0].trim();
+  // Ensure the URL always has a protocol so Express redirects emit an absolute Location header.
+  if (raw && !raw.startsWith("http://") && !raw.startsWith("https://")) {
+    return `https://${raw}`;
+  }
+  return raw;
 }
 
 function buildOAuthUrl(clientId: string, redirectUri: string): string {
