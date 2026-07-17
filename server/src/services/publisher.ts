@@ -14,6 +14,7 @@ import {
   publishStory as igPublishStory,
   publishReel as igPublishReel,
 } from "../adapters/instagram.js";
+import { publishPost as liPublishPost } from "../adapters/linkedin.js";
 import { logger } from "../utils/logger.js";
 import type { Platform } from "@prisma/client";
 
@@ -78,7 +79,11 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
       continue;
     }
 
-    if (account.platform !== "FACEBOOK" && account.platform !== "INSTAGRAM") {
+    if (
+      account.platform !== "FACEBOOK" &&
+      account.platform !== "INSTAGRAM" &&
+      account.platform !== "LINKEDIN"
+    ) {
       logger.info({ platform: account.platform }, "Platform adapter not yet implemented — skipping");
       await prisma.scheduledPostPlatform.update({
         where: { id: platform.id },
@@ -136,7 +141,7 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
           additionalMediaUrls: effectiveAdditionalUrls,
           meta,
         });
-      } else {
+      } else if (account.platform === "INSTAGRAM") {
         result = await dispatchInstagram({
           postType,
           accessToken,
@@ -146,6 +151,14 @@ export async function publishPostById(postId: string): Promise<PublishResult> {
           mediaType: effectiveMediaType,
           additionalMediaUrls: effectiveAdditionalUrls,
           meta,
+        });
+      } else {
+        result = await dispatchLinkedIn({
+          postType,
+          accessToken,
+          accountId: account.accountId,
+          text: caption,
+          mediaUrl: effectiveMediaUrl,
         });
       }
 
@@ -322,6 +335,30 @@ async function dispatchInstagram(opts: {
     default:
       return igPublishPost({ accessToken, igUserId: igUserId, caption, mediaUrl, mediaType });
   }
+}
+
+async function dispatchLinkedIn(opts: {
+  postType: string;
+  accessToken: string;
+  accountId: string;
+  text: string;
+  mediaUrl: string | null | undefined;
+}): Promise<AdapterPublishResult> {
+  const { postType, accessToken, accountId, text, mediaUrl } = opts;
+
+  if (postType === "story" || postType === "reel") {
+    return { success: false, errorMessage: `LinkedIn does not support ${postType} posts.` };
+  }
+  if (postType === "event") {
+    return { success: false, errorMessage: "LinkedIn does not support Event posts. Use a standard post instead." };
+  }
+
+  // Org IDs are purely numeric; personal profile subs are alphanumeric.
+  const authorUrn = /^\d+$/.test(accountId)
+    ? `urn:li:organization:${accountId}`
+    : `urn:li:person:${accountId}`;
+
+  return liPublishPost({ accessToken, authorUrn, text, mediaUrl });
 }
 
 async function writePublishLog(

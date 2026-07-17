@@ -7,6 +7,7 @@ import { notFound } from "../utils/errors.js";
 import { decrypt } from "../utils/crypto.js";
 import { getPageFeedWithComments, replyToComment as fbReplyToComment } from "../adapters/facebook.js";
 import { getMediaWithComments, replyToComment as igReplyToComment } from "../adapters/instagram.js";
+import { getComments as liGetComments } from "../adapters/linkedin.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
@@ -82,7 +83,7 @@ router.post("/sync", async (_req: Request, res: Response) => {
   const accounts = await prisma.socialAccount.findMany({
     where: {
       connectionStatus: "connected",
-      platform: { in: ["FACEBOOK", "INSTAGRAM"] },
+      platform: { in: ["FACEBOOK", "INSTAGRAM", "LINKEDIN"] },
       commentReadCapability: true,
     },
   });
@@ -104,59 +105,105 @@ router.post("/sync", async (_req: Request, res: Response) => {
 
     // ── Isolate each account so one failure doesn't abort the whole sync ──────
     try {
-      const appPostMap = await prisma.scheduledPostPlatform
-        .findMany({
+      if (account.platform === "LINKEDIN") {
+        // LinkedIn has no feed API — poll comments on our own published posts.
+        const publishedPosts = await prisma.scheduledPostPlatform.findMany({
           where: {
             accountId: account.id,
-            platform: account.platform,
+            platform: "LINKEDIN",
             status: "PUBLISHED",
             externalPostId: { not: null },
           },
           include: { scheduledPost: { select: { title: true } } },
-        })
-        .then((rows) =>
-          Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
-        );
+          take: 20,
+          orderBy: { publishedAt: "desc" },
+        });
 
-      const feedPosts =
-        account.platform === "FACEBOOK"
-          ? await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 })
-          : (await getMediaWithComments({ accessToken, igUserId: account.accountId, limit: 50 })).map((m) => ({
-              externalPostId: m.externalPostId,
-              message: m.caption,
-              createdTime: m.createdTime,
-              comments: m.comments,
-            }));
+        for (const post of publishedPosts) {
+          // Skip fallback IDs that aren't real LinkedIn URNs
+          if (!post.externalPostId!.startsWith("urn:li:")) continue;
 
-      for (const post of feedPosts) {
-        const defaultTitle =
-          account.platform === "FACEBOOK"
-            ? (post.message.slice(0, 60) || "Facebook post")
-            : (post.message.slice(0, 60) || "Instagram post");
-        const postTitle = appPostMap[post.externalPostId] ?? defaultTitle;
-        for (const c of post.comments) {
-          const existing = await prisma.socialComment.findFirst({
-            where: { externalCommentId: c.externalId },
-          });
-          if (!existing) {
-            await prisma.socialComment.create({
-              data: {
-                platform: account.platform,
-                accountId: account.id,
-                accountName: account.accountName,
-                commenterName: c.commenterName,
-                commentText: c.text,
-                originalPostTitle: postTitle,
-                originalPostCaption: post.message,
-                externalCommentId: c.externalId,
-                timestamp: new Date(c.timestamp),
-              },
+          const comments = await liGetComments({ accessToken, shareUrn: post.externalPostId! });
+          for (const c of comments) {
+            const existing = await prisma.socialComment.findFirst({
+              where: { externalCommentId: c.externalId },
             });
-            totalNew++;
+            if (!existing) {
+              await prisma.socialComment.create({
+                data: {
+                  platform: "LINKEDIN",
+                  accountId: account.id,
+                  accountName: account.accountName,
+                  commenterName: c.commenterName,
+                  commentText: c.text,
+                  originalPostTitle: post.scheduledPost.title,
+                  originalPostCaption: "",
+                  externalCommentId: c.externalId,
+                  timestamp: new Date(c.timestamp),
+                },
+              });
+              totalNew++;
+            }
+            totalSynced++;
           }
-          totalSynced++;
+          results.push({ accountId: account.id, postId: post.externalPostId!, synced: comments.length });
         }
-        results.push({ accountId: account.id, postId: post.externalPostId, synced: post.comments.length });
+      } else {
+        // Facebook + Instagram: fetch the platform's recent feed with comments.
+        const appPostMap = await prisma.scheduledPostPlatform
+          .findMany({
+            where: {
+              accountId: account.id,
+              platform: account.platform,
+              status: "PUBLISHED",
+              externalPostId: { not: null },
+            },
+            include: { scheduledPost: { select: { title: true } } },
+          })
+          .then((rows) =>
+            Object.fromEntries(rows.map((r) => [r.externalPostId!, r.scheduledPost.title])),
+          );
+
+        const feedPosts =
+          account.platform === "FACEBOOK"
+            ? await getPageFeedWithComments({ accessToken, pageId: account.accountId, limit: 50 })
+            : (await getMediaWithComments({ accessToken, igUserId: account.accountId, limit: 50 })).map((m) => ({
+                externalPostId: m.externalPostId,
+                message: m.caption,
+                createdTime: m.createdTime,
+                comments: m.comments,
+              }));
+
+        for (const post of feedPosts) {
+          const defaultTitle =
+            account.platform === "FACEBOOK"
+              ? (post.message.slice(0, 60) || "Facebook post")
+              : (post.message.slice(0, 60) || "Instagram post");
+          const postTitle = appPostMap[post.externalPostId] ?? defaultTitle;
+          for (const c of post.comments) {
+            const existing = await prisma.socialComment.findFirst({
+              where: { externalCommentId: c.externalId },
+            });
+            if (!existing) {
+              await prisma.socialComment.create({
+                data: {
+                  platform: account.platform,
+                  accountId: account.id,
+                  accountName: account.accountName,
+                  commenterName: c.commenterName,
+                  commentText: c.text,
+                  originalPostTitle: postTitle,
+                  originalPostCaption: post.message,
+                  externalCommentId: c.externalId,
+                  timestamp: new Date(c.timestamp),
+                },
+              });
+              totalNew++;
+            }
+            totalSynced++;
+          }
+          results.push({ accountId: account.id, postId: post.externalPostId, synced: post.comments.length });
+        }
       }
 
       await prisma.socialAccount.update({ where: { id: account.id }, data: { lastSync: new Date() } });
