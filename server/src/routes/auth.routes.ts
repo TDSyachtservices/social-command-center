@@ -242,14 +242,18 @@ router.get("/facebook/callback", async (req: Request, res: Response) => {
 
 // ─── LinkedIn OAuth ────────────────────────────────────────────────────────────
 
+// Core scopes — available to any standard LinkedIn app:
+//   openid/profile/email  → "Sign In with LinkedIn using OpenID Connect" product
+//   w_member_social       → "Share on LinkedIn" product
+// Org/Marketing scopes (r_organization_social etc.) require LinkedIn to approve
+// your app for the Marketing Developer Platform. They are requested separately
+// and the callback gracefully falls back to a personal-profile account when
+// the token doesn't include them.
 const LI_SCOPES = [
   "openid",
   "profile",
   "email",
   "w_member_social",
-  "r_organization_social",
-  "w_organization_social",
-  "rw_organization_admin",
 ].join(" ");
 
 function getLiRedirectUri(): string {
