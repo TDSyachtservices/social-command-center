@@ -68,7 +68,7 @@ router.get(
       prisma.scheduledPost.findMany({
         where,
         include: {
-          platforms: { select: { platform: true, accountId: true, status: true } },
+          platforms: { select: { platform: true, accountId: true, status: true, errorMessage: true } },
         },
         orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
         skip: (q.page - 1) * q.limit,

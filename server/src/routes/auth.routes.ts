@@ -337,7 +337,9 @@ router.get("/linkedin/callback", async (req: Request, res: Response) => {
     const expiresIn = tokenData.expires_in ?? 5184000; // 60 days default
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
     const encryptedToken = encrypt(accessToken);
-    const grantedScopes = (tokenData.scope ?? "").split(" ").filter(Boolean);
+    // LinkedIn returns scope as a comma-separated string in some token responses,
+    // space-separated in others — split on both to be safe.
+    const grantedScopes = (tokenData.scope ?? "").split(/[\s,]+/).filter(Boolean);
 
     // Step 2: get the authenticated member's profile
     const profile = await getLinkedInProfile(accessToken);
