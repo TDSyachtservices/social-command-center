@@ -7,7 +7,7 @@ import { PlatformCaptionTabs } from "./PlatformCaptionTabs";
 import { SocialPreviewPanel } from "./SocialPreviewPanel";
 import { HashtagPicker } from "./HashtagPicker";
 import { MentionPicker } from "./MentionPicker";
-import { PostTypeSelector, type PostType } from "./PostTypeSelector";
+import { PostTypeSelector, getAllowedPostTypes, type PostType } from "./PostTypeSelector";
 import { AlbumUploader } from "./AlbumUploader";
 import { EventFields, type EventMeta } from "./EventFields";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { listAccounts, createPost, updatePost, schedulePost, publishPost, getPost, type ApiAccount } from "@/lib/api";
+import { listAccounts, createPost, updatePost, schedulePost, publishPost, pollUntilPublishSettled, getPost, type ApiAccount } from "@/lib/api";
 import { validatePostContent, hasBlockingErrors } from "@/lib/platformValidation";
 import { PlatformValidationNotice } from "./PlatformValidationNotice";
 import { AiCaptionReviser } from "./AiCaptionReviser";
@@ -48,7 +48,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const [title, setTitle] = useState("");
   const [masterCaption, setMasterCaption] = useState("");
-  const [platforms, setPlatforms] = useState<Platform[]>(["Facebook"]);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [platformCaptions, setPlatformCaptions] = useState<Record<Platform, string>>({} as Record<Platform, string>);
   const [touchedCaptionPlatforms, setTouchedCaptionPlatforms] = useState<Set<Platform>>(new Set());
   const [platformHashtags, setPlatformHashtags] = useState<Record<string, string[]>>({});
@@ -75,6 +75,16 @@ export function PostComposer({ editPostId }: PostComposerProps) {
     });
   }, []);
 
+  // If the platform selection changes such that the current post type is no
+  // longer supported by every selected platform, fall back to Standard
+  // rather than leaving an invalid combination selected. Skip this while a
+  // post is still loading for edit, so we don't clobber the restored type.
+  useEffect(() => {
+    if (isLoadingPost) return;
+    const allowed = getAllowedPostTypes(platforms);
+    if (!allowed.includes(postType)) setPostType("standard");
+  }, [platforms, isLoadingPost]);
+
   useEffect(() => {
     if (!editPostId) return;
     setIsLoadingPost(true);
@@ -85,7 +95,7 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         const postPlatforms = post.platforms
           .map((pl) => SERVER_TO_PLATFORM[pl.platform.toUpperCase()])
           .filter((p): p is Platform => Boolean(p));
-        setPlatforms(postPlatforms.length > 0 ? postPlatforms : ["Facebook"]);
+        setPlatforms(postPlatforms);
 
         // Restore post type
         const pt = post.postType;
@@ -175,24 +185,40 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   );
 
   const buildEffectiveCaption = () => {
-    const base = postType === "event" && eventMeta.eventDescription
+    // Return the master caption without hashtags — hashtags are per-platform and
+    // are baked into each platform's platformCaption by buildPlatformMedia().
+    return postType === "event" && eventMeta.eventDescription
       ? eventMeta.eventDescription
       : masterCaption;
-    const tags = platforms.flatMap((p) => platformHashtags[p] ?? []);
-    const uniqueTags = [...new Set(tags)];
-    if (uniqueTags.length === 0) return base;
-    return `${base}\n\n${uniqueTags.join(" ")}`;
   };
 
   const buildPlatformMedia = () =>
     platforms
-      .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p))
-      .map((p) => ({
-        platform: p.toUpperCase(),
-        mediaUrl: platformMedia[p]?.url ?? null,
-        mediaType: platformMedia[p]?.type ?? null,
-        platformCaption: platformCaptions[p]?.trim() || null,
-      }));
+      // Include any platform that has media, a custom caption, OR hashtags.
+      // Previously platforms with only hashtags were filtered out, silently
+      // dropping those hashtags from the published post.
+      .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p) || (platformHashtags[p] ?? []).length > 0)
+      .map((p) => {
+        const tags = platformHashtags[p] ?? [];
+        const base = platformCaptions[p]?.trim() || null;
+        // Bake hashtags into platformCaption so they survive the server's
+        // resolveCaption(platformCaption ?? masterCaption) fallback.
+        // If there's no custom caption, use masterCaption as the base so the
+        // platform gets its own copy with the right hashtags appended.
+        let platformCaption: string | null = base;
+        if (tags.length > 0) {
+          const captionBase = base ?? masterCaption;
+          platformCaption = captionBase.trim()
+            ? `${captionBase.trim()}\n\n${tags.join(" ")}`
+            : tags.join(" ");
+        }
+        return {
+          platform: p.toUpperCase(),
+          mediaUrl: platformMedia[p]?.url ?? null,
+          mediaType: platformMedia[p]?.type ?? null,
+          platformCaption,
+        };
+      });
 
   const buildPostMetadata = (): Record<string, unknown> | null => {
     const meta: Record<string, unknown> = {};
@@ -351,14 +377,42 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         toast({ title: "Failed to save post", description: "The server returned an error.", variant: "destructive" });
         return;
       }
-      const ok = await publishPost(post.id);
-      if (ok) {
-        toast({ title: "Post published", description: `"${title}" sent to ${platforms.join(" & ")}.` });
-        setLocation("/posts");
-      } else {
-        toast({ title: "Publish failed", description: "Post was saved but publishing failed. You can retry it from the Posts page.", variant: "destructive" });
+      const triggered = await publishPost(post.id);
+      if (!triggered) {
+        toast({ title: "Publish failed", description: "Could not trigger publishing. You can retry it from the Posts page.", variant: "destructive" });
         setLocation("/posts?status=failed");
+        return;
       }
+
+      // Publishing runs asynchronously on the server (it may need to wait on
+      // platform APIs, e.g. video processing) — the trigger above only confirms
+      // the request was accepted, not that the post actually went out. Poll the
+      // real post status until the server reports a terminal outcome instead of
+      // guessing from the HTTP response, so the toast reflects what really
+      // happened rather than sending the user off to refresh manually.
+      toast({ title: "Publishing…", description: `Sending "${title}" to ${platforms.join(" & ")}.` });
+      const finalPost = await pollUntilPublishSettled(post.id);
+
+      if (finalPost?.status === "PUBLISHED") {
+        toast({ title: "Post published", description: `"${title}" is live on ${platforms.join(" & ")}.` });
+      } else if (finalPost?.status === "FAILED") {
+        const failedPlatforms = finalPost.platforms.filter((pl) => pl.status === "FAILED").map((pl) => pl.platform);
+        toast({
+          title: "Publish failed",
+          description: failedPlatforms.length > 0
+            ? `Failed on ${failedPlatforms.join(", ")}. Check Publish Logs for details, then retry from the Posts page.`
+            : `Publishing "${title}" failed. Check Publish Logs for details, then retry from the Posts page.`,
+          variant: "destructive",
+        });
+      } else {
+        // Still not settled after the poll window — don't claim success or
+        // failure; tell the user honestly and point them at where it'll resolve.
+        toast({
+          title: "Still publishing",
+          description: `"${title}" is taking longer than usual. It'll finish in the background — check the Posts page for the final status.`,
+        });
+      }
+      setLocation("/posts");
     } catch {
       toast({ title: "Error", description: "Unexpected error publishing post.", variant: "destructive" });
     } finally {
