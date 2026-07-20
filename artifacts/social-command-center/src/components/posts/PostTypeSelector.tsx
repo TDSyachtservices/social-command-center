@@ -58,20 +58,30 @@ const ALL_TYPES: Array<{
   },
 ];
 
+/**
+ * Only post types supported by EVERY selected platform are shown — when
+ * multiple platforms are picked, options are intersected (not unioned) so
+ * the user never selects a type that would silently fail/skip on one of
+ * their chosen platforms.
+ */
+export function getAllowedPostTypes(availablePlatforms: string[]): PostType[] {
+  if (availablePlatforms.length === 0) return ALL_TYPES.map((t) => t.type);
+  return ALL_TYPES
+    .filter((t) => availablePlatforms.every((p) => t.platforms.includes(p)))
+    .map((t) => t.type);
+}
+
 export function PostTypeSelector({ value, onChange, availablePlatforms }: PostTypeSelectorProps) {
-  const relevant = ALL_TYPES.filter((t) =>
-    t.platforms.some((p) => availablePlatforms.includes(p))
-  );
+  const allowedTypes = getAllowedPostTypes(availablePlatforms);
+  const relevant = ALL_TYPES.filter((t) => allowedTypes.includes(t.type));
 
-  const linkedInOnly = availablePlatforms.length > 0 && availablePlatforms.every(p => p === "LinkedIn");
-
-  if (linkedInOnly) {
+  if (availablePlatforms.length > 1 && relevant.length === 1) {
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium">Post Type</label>
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 border rounded-md px-3 py-2">
           <ImageIcon className="w-4 h-4 shrink-0" />
-          <span>LinkedIn only supports Standard posts</span>
+          <span>Only Standard posts are supported across all selected platforms</span>
         </div>
       </div>
     );
@@ -83,7 +93,6 @@ export function PostTypeSelector({ value, onChange, availablePlatforms }: PostTy
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {relevant.map((item) => {
           const active = value === item.type;
-          const notOnLinkedIn = availablePlatforms.includes("LinkedIn") && !item.platforms.includes("LinkedIn");
           return (
             <button
               key={item.type}
@@ -104,9 +113,6 @@ export function PostTypeSelector({ value, onChange, availablePlatforms }: PostTy
               </div>
               <span className={`text-xs font-semibold ${active ? "text-primary" : ""}`}>{item.label}</span>
               <span className="text-[10px] text-muted-foreground leading-tight">{item.description}</span>
-              {notOnLinkedIn && (
-                <span className="text-[9px] text-amber-600 leading-tight">LinkedIn skipped</span>
-              )}
             </button>
           );
         })}
