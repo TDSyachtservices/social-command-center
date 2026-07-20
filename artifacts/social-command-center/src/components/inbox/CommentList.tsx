@@ -49,6 +49,7 @@ export function CommentList({ selectedCommentId, onSelectComment, initialStatusF
           replyCount: c.replyCount,
           assignedUser: c.assignedUser,
           mediaUrl: null,
+          notes: c.notes ?? [],
         }));
         setComments(normalized);
       } else {

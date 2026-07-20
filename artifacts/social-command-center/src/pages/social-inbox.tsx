@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSearch } from "wouter";
 import { MockComment } from "@/data/mockComments";
 import { CommentList } from "@/components/inbox/CommentList";
@@ -6,8 +6,23 @@ import { CommentDetailPanel } from "@/components/inbox/CommentDetailPanel";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, ArrowLeft, RefreshCw } from "lucide-react";
-import { syncFacebookInbox, isApiConfigured } from "@/lib/api";
-import { toast } from "@/hooks/use-toast";
+import { isApiConfigured } from "@/lib/api";
+import { useInboxSync } from "@/hooks/use-inbox-sync";
+
+function useRelativeTime(date: Date | null): string {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!date) return;
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [date]);
+  if (!date) return "";
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 10) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  return `${diffMin}m ago`;
+}
 
 export default function SocialInbox() {
   const search = useSearch();
@@ -16,8 +31,8 @@ export default function SocialInbox() {
 
   const [selectedComment, setSelectedComment] = useState<MockComment | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
-  const [syncing, setSyncing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+
+  const { syncing, lastSynced, refreshKey, sync } = useInboxSync();
 
   const handleSelectComment = (comment: MockComment) => {
     setSelectedComment(comment);
@@ -26,43 +41,13 @@ export default function SocialInbox() {
 
   const handleCommentFieldChange = (fields: Partial<Pick<MockComment, "status" | "priority" | "assignedUser">>) => {
     setSelectedComment(prev => prev ? { ...prev, ...fields } : prev);
-    setRefreshKey(k => k + 1);
   };
 
   const handleBack = () => {
     setMobileView("list");
   };
 
-  const runSync = useCallback(async (silent = false) => {
-    if (!isApiConfigured()) return;
-    setSyncing(true);
-    try {
-      const result = await syncFacebookInbox();
-      if (result) {
-        setRefreshKey(k => k + 1);
-        if (!silent && result.totalNew > 0) {
-          toast({
-            title: "Sync complete",
-            description: `${result.totalNew} new comment${result.totalNew !== 1 ? "s" : ""} pulled from connected accounts.`,
-          });
-        }
-      } else if (!silent) {
-        toast({
-          title: "Sync unavailable",
-          description: "Could not reach the server.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    runSync(true);
-  }, [runSync]);
-
-  const handleSync = () => runSync(false);
+  const lastSyncedLabel = useRelativeTime(lastSynced);
 
   return (
     <div className="flex flex-col h-full">
@@ -72,16 +57,23 @@ export default function SocialInbox() {
           <p className="text-sm text-muted-foreground">Manage comments and messages across platforms</p>
         </div>
         {isApiConfigured() && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={syncing}
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {lastSyncedLabel && (
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Synced {lastSyncedLabel}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={sync}
+              disabled={syncing}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync"}
+            </Button>
+          </div>
         )}
       </div>
 

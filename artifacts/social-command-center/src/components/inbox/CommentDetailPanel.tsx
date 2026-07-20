@@ -1,14 +1,19 @@
 import { useState, useEffect } from "react";
-import { MockComment } from "@/data/mockComments";
+import { MockComment, CommentNote } from "@/data/mockComments";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { ReplyComposer } from "./ReplyComposer";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Image as ImageIcon, ExternalLink, RefreshCw, CheckCircle, Flag, EyeOff, ArchiveX, Languages } from "lucide-react";
-import { updateComment, isApiConfigured, translateComment } from "@/lib/api";
+import { Image as ImageIcon, ExternalLink, RefreshCw, CheckCircle, Flag, EyeOff, ArchiveX, Languages, Save } from "lucide-react";
+import { updateComment, isApiConfigured, translateComment, addNote } from "@/lib/api";
 import { mockUpdateCommentStatus } from "@/lib/mockActions";
 import { toast } from "@/hooks/use-toast";
+
+interface SentReply {
+  text: string;
+  sentAt: string;
+}
 
 interface CommentDetailPanelProps {
   comment: MockComment;
@@ -20,14 +25,22 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
   const [priority, setPriority] = useState(comment.priority);
   const [assignedUser, setAssignedUser] = useState(comment.assignedUser || "unassigned");
   const [internalNotes, setInternalNotes] = useState("");
+  const [savedNotes, setSavedNotes] = useState<CommentNote[]>(comment.notes ?? []);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [translation, setTranslation] = useState<{ detected: string; text: string } | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [sentReplies, setSentReplies] = useState<SentReply[]>([]);
 
+  // Reset all per-comment local state when the selected comment changes so
+  // notes typed for one comment don't bleed onto the next one.
   useEffect(() => {
+    setInternalNotes("");
+    setSavedNotes(comment.notes ?? []);
     setTranslation(null);
     setIsTranslating(false);
+    setSentReplies([]);
   }, [comment.id]);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -85,6 +98,27 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 1000);
+  };
+
+  const handleSaveNote = async () => {
+    const text = internalNotes.trim();
+    if (!text) return;
+    setIsSavingNote(true);
+    try {
+      const ok = await addNote(comment.id, text);
+      if (ok) {
+        setSavedNotes((prev) => [
+          ...prev,
+          { id: Date.now().toString(), noteText: text, createdBy: null, createdAt: new Date().toISOString() },
+        ]);
+        setInternalNotes("");
+        toast({ title: "Note saved" });
+      } else {
+        toast({ title: "Failed to save note", variant: "destructive" });
+      }
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   const handleTranslate = async () => {
@@ -215,14 +249,60 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
             </div>
           </div>
 
+          {sentReplies.map((reply, i) => (
+            <div key={i} className="flex gap-4 justify-end">
+              <div className="flex-1 max-w-[80%] space-y-1 flex flex-col items-end">
+                <div className="bg-primary text-primary-foreground p-3 rounded-2xl rounded-tr-none text-sm">
+                  {reply.text}
+                </div>
+                <span className="text-[10px] text-muted-foreground pr-1">
+                  You · {new Date(reply.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0 font-bold text-primary-foreground text-sm">
+                Me
+              </div>
+            </div>
+          ))}
+
           <div className="space-y-2 pt-4">
             <label className="text-xs font-medium text-muted-foreground">Internal Notes (Not visible to user)</label>
+
+            {savedNotes.length > 0 && (
+              <div className="space-y-2">
+                {savedNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="text-xs bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-md px-3 py-2 space-y-0.5"
+                  >
+                    <p className="whitespace-pre-wrap">{note.noteText}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {note.createdBy ? `${note.createdBy} · ` : ""}
+                      {new Date(note.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Textarea
-              placeholder="Add notes for the team..."
+              placeholder="Add a note for the team…"
               className="min-h-[80px] text-xs bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50"
               value={internalNotes}
               onChange={e => setInternalNotes(e.target.value)}
             />
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSaveNote}
+                disabled={isSavingNote || !internalNotes.trim()}
+                className="text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-950/40"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {isSavingNote ? "Saving…" : "Save Note"}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -233,8 +313,10 @@ export function CommentDetailPanel({ comment, onFieldChange }: CommentDetailPane
             commentText={comment.commentText}
             postTitle={comment.originalPostTitle}
             postCaption={comment.originalPostCaption}
-            onSuccess={(fbStatus?: string, fbError?: string) => {
-              // Reply route already marks the comment REPLIED — just update local state
+            onSuccess={(fbStatus?: string, fbError?: string, replyText?: string) => {
+              if (replyText) {
+                setSentReplies(prev => [...prev, { text: replyText, sentAt: new Date().toISOString() }]);
+              }
               setStatus("replied" as MockComment["status"]);
               onFieldChange?.({ status: "replied" as MockComment["status"] });
               if (fbStatus === "failed") {

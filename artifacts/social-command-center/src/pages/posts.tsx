@@ -44,17 +44,33 @@ export default function Posts() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
-      if (apiPosts !== null) {
-        setPosts(apiPosts.map((p) => ({
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const load = () => {
+      listPosts({ status: filter === "all" ? undefined : filter.toUpperCase() }).then((apiPosts) => {
+        if (cancelled || apiPosts === null) return;
+        const mapped = apiPosts.map((p) => ({
           id: p.id,
           title: p.title,
           platforms: p.platforms.map((pl) => pl.platform.toLowerCase()),
           status: p.status.toLowerCase(),
           scheduledAt: p.scheduledAt ?? null,
-        })));
-      }
-    });
+        }));
+        setPosts(mapped);
+
+        // Publishing happens asynchronously on the server, so a post can sit
+        // in "publishing" for a few seconds. Keep polling while that's the
+        // case so the badge flips to published/failed on its own — no manual
+        // refresh needed.
+        if (mapped.some((p) => p.status === "publishing")) {
+          pollTimer = setTimeout(load, 2000);
+        }
+      });
+    };
+
+    load();
+    return () => { cancelled = true; if (pollTimer) clearTimeout(pollTimer); };
   }, [filter]);
 
   const filteredPosts = posts.filter(p => {

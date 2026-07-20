@@ -50,7 +50,7 @@ export const IMAGE_RULES: Record<Platform, MediaRule> = {
 export const VIDEO_RULES: Record<Platform, MediaRule> = {
   Facebook: {
     allowedMimeTypes: ["video/mp4", "video/quicktime"],
-    maxFileSizeBytes: 4 * 1024 * 1024 * 1024,
+    maxFileSizeBytes: 1 * 1024 * 1024 * 1024,
     minWidth: 120,
     aspectRatioMin: 0.4,
     aspectRatioMax: 2.5,

@@ -135,6 +135,25 @@ export async function publishPost(postId: string): Promise<boolean> {
   return result.ok;
 }
 
+/**
+ * Publishing is asynchronous on the server (POST /publish just flips the post
+ * to PUBLISHING and returns immediately). This polls GET /api/posts/:id until
+ * the post reaches a terminal status (PUBLISHED/FAILED) or the poll window
+ * runs out, so callers can show the real outcome instead of trusting the
+ * immediate HTTP response or requiring the user to manually refresh.
+ */
+export async function pollUntilPublishSettled(
+  postId: string,
+  { maxAttempts = 40, intervalMs = 2000 }: { maxAttempts?: number; intervalMs?: number } = {},
+): Promise<ApiPost | null> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, intervalMs));
+    const post = await getPost(postId);
+    if (post && post.status !== "PUBLISHING") return post;
+  }
+  return await getPost(postId);
+}
+
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export interface ApiAccount {

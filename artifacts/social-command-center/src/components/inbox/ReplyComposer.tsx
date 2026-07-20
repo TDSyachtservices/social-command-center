@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Send, Save, Trash2, Loader2 } from "lucide-react";
 import { sendReply, generateReply } from "@/lib/api";
+import { EmojiPicker } from "./EmojiPicker";
 
 interface ReplyComposerProps {
   commentId: string;
   commentText: string;
   postTitle?: string;
   postCaption?: string;
-  onSuccess: (fbStatus?: string, fbError?: string) => void;
+  onSuccess: (fbStatus?: string, fbError?: string, replyText?: string) => void;
 }
 
 export function ReplyComposer({ commentId, commentText, postTitle, postCaption, onSuccess }: ReplyComposerProps) {
@@ -19,6 +20,24 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
   const [isSending, setIsSending] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertAtCursor = (text: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setReply((prev) => prev + text);
+      return;
+    }
+    const start = el.selectionStart ?? reply.length;
+    const end = el.selectionEnd ?? reply.length;
+    const next = reply.slice(0, start) + text + reply.slice(end);
+    setReply(next);
+    // Restore focus and move cursor after the inserted text
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + text.length, start + text.length);
+    });
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -38,11 +57,12 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
     if (!reply.trim()) return;
     setIsSending(true);
     setError(null);
+    const sentText = reply;
     try {
       const result = await sendReply(commentId, reply);
       if (!result.ok) throw new Error("Failed to send reply");
       setReply("");
-      onSuccess(result.fbStatus, result.fbError);
+      onSuccess(result.fbStatus, result.fbError, sentText);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reply");
     } finally {
@@ -91,12 +111,18 @@ export function ReplyComposer({ commentId, commentText, postTitle, postCaption, 
         ))}
       </div>
 
-      <Textarea
-        placeholder="Type your reply here..."
-        className="min-h-[100px] text-sm"
-        value={reply}
-        onChange={(e) => setReply(e.target.value)}
-      />
+      <div className="relative">
+        <Textarea
+          ref={textareaRef}
+          placeholder="Type your reply here..."
+          className="min-h-[100px] text-sm pr-10"
+          value={reply}
+          onChange={(e) => setReply(e.target.value)}
+        />
+        <div className="absolute bottom-2 right-2">
+          <EmojiPicker onSelect={insertAtCursor} />
+        </div>
+      </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
       {reply && <p className="text-xs text-green-600 font-medium">✓ AI reply ready — {reply.length} chars</p>}

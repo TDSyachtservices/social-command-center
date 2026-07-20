@@ -3,6 +3,13 @@ import { Platform } from "./mockPosts";
 export type CommentStatus = "new" | "replied" | "needs_follow_up" | "resolved" | "hidden" | "ignored" | "escalated" | "failed_reply";
 export type CommentPriority = "low" | "normal" | "high" | "urgent" | "sales_opportunity";
 
+export interface CommentNote {
+  id: string;
+  noteText: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
 export interface MockComment {
   id: string;
   platform: Platform;
@@ -18,4 +25,5 @@ export interface MockComment {
   replyCount: number;
   assignedUser: string | null;
   mediaUrl: string | null;
+  notes: CommentNote[];
 }
