@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Hash, Plus, Pencil, Trash2, X, Check, Loader2, Sparkles } from "lucide-react";
+import { Hash, Plus, Pencil, Trash2, X, Check, Loader2, Sparkles, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -503,6 +503,21 @@ export default function HashtagLibrary() {
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Copy all hashtags"
+                    onClick={() => {
+                      navigator.clipboard.writeText(set.hashtags.join(" ")).then(() => {
+                        toast({ title: "Copied to clipboard", description: `${set.hashtags.length} hashtag${set.hashtags.length !== 1 ? "s" : ""} copied.` });
+                      }).catch(() => {
+                        toast({ title: "Copy failed", description: "Could not access clipboard.", variant: "destructive" });
+                      });
+                    }}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

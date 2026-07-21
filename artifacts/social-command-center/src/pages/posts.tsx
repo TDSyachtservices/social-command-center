@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import type { PostStatus } from "@/data/mockPosts";
-import { listPosts, deletePost } from "@/lib/api";
+import { listPosts, deletePost, publishPost, pollUntilPublishSettled } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { PlatformBadge } from "@/components/shared/PlatformBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -42,6 +42,7 @@ export default function Posts() {
   const [posts, setPosts] = useState<DisplayPost[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +67,20 @@ export default function Posts() {
         if (mapped.some((p) => p.status === "publishing")) {
           pollTimer = setTimeout(load, 2000);
         }
+
+        // Toast when a publishing post settles
+        setPosts((prev) => {
+          const wasPublishing = new Set(prev.filter((p) => p.status === "publishing").map((p) => p.id));
+          for (const p of mapped) {
+            if (!wasPublishing.has(p.id)) continue;
+            if (p.status === "published") {
+              toast({ title: "Post published", description: `"${p.title}" is now live.` });
+            } else if (p.status === "failed") {
+              toast({ title: "Publish failed", description: `"${p.title}" could not be published. Check Publish Logs for details.`, variant: "destructive" });
+            }
+          }
+          return mapped;
+        });
       });
     };
 
@@ -78,6 +93,31 @@ export default function Posts() {
     const matchesSearch = !searchTerm || p.title.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesStatus && matchesSearch;
   });
+
+  const handleRetry = async (postId: string, postTitle: string) => {
+    setRetryingId(postId);
+    try {
+      const triggered = await publishPost(postId);
+      if (!triggered) {
+        toast({ title: "Retry failed", description: "Could not trigger publishing. Try again.", variant: "destructive" });
+        return;
+      }
+      setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, status: "publishing" } : p));
+      toast({ title: "Retrying…", description: `Sending "${postTitle}" to your platforms.` });
+      const final = await pollUntilPublishSettled(postId);
+      if (final?.status === "PUBLISHED") {
+        setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, status: "published" } : p));
+        toast({ title: "Post published", description: `"${postTitle}" is now live.` });
+      } else {
+        setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, status: "failed" } : p));
+        toast({ title: "Publish failed", description: `"${postTitle}" could not be published. Check Publish Logs for details.`, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Unexpected error retrying publish.", variant: "destructive" });
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const handleDeleteConfirm = async () => {
     if (!deletingId) return;
@@ -193,9 +233,11 @@ export default function Posts() {
                             variant="outline"
                             size="sm"
                             className="text-destructive border-destructive/30"
+                            disabled={retryingId === post.id}
+                            onClick={() => handleRetry(post.id, post.title)}
                             data-testid={`btn-retry-${post.id}`}
                           >
-                            Retry
+                            {retryingId === post.id ? "Retrying…" : "Retry"}
                           </Button>
                         )}
                         <Button
