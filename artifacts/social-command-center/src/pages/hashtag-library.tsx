@@ -530,14 +530,9 @@ export default function HashtagLibrary() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5">
-                  {set.hashtags.slice(0, 12).map((t) => (
+                  {set.hashtags.map((t) => (
                     <HashtagChip key={t} tag={t} />
                   ))}
-                  {set.hashtags.length > 12 && (
-                    <span className="text-xs text-muted-foreground self-center">
-                      +{set.hashtags.length - 12} more
-                    </span>
-                  )}
                 </div>
               </CardContent>
             </Card>
