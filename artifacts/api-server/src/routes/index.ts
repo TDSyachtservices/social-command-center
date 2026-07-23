@@ -4,6 +4,7 @@ import aiScoreRouter from "./ai-score";
 import hashtagSetsRouter from "./hashtag-sets";
 import mentionContactsRouter from "./mention-contacts";
 import mentionGroupsRouter from "./mention-groups";
+import templatesRouter from "./templates";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use("/ai", aiScoreRouter);
 router.use(hashtagSetsRouter);
 router.use(mentionContactsRouter);
 router.use(mentionGroupsRouter);
+router.use(templatesRouter);
 
 export default router;

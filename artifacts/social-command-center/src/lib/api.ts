@@ -981,6 +981,71 @@ export async function getLatestPlatformStats(
   return result.data[0].followersCount;
 }
 
+// ─── Post Templates ───────────────────────────────────────────────────────────
+
+export interface ApiTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  postType: string;
+  platforms: string[];
+  masterCaption: string;
+  platformCaptionsJson: Record<string, string> | null;
+  hashtagsJson: Record<string, string[]> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listTemplates(): Promise<ApiTemplate[] | null> {
+  const result = await apiFetch<ApiTemplate[]>("/api/templates");
+  return result.ok ? result.data : null;
+}
+
+export async function getTemplate(id: string): Promise<ApiTemplate | null> {
+  const result = await apiFetch<ApiTemplate>(`/api/templates/${id}`);
+  return result.ok ? result.data : null;
+}
+
+export async function createTemplate(body: {
+  name: string;
+  description?: string;
+  postType: string;
+  platforms: string[];
+  masterCaption: string;
+  platformCaptionsJson?: Record<string, string> | null;
+  hashtagsJson?: Record<string, string[]> | null;
+}): Promise<ApiTemplate | null> {
+  const result = await apiFetch<ApiTemplate>("/api/templates", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function updateTemplate(
+  id: string,
+  body: Partial<{
+    name: string;
+    description: string | null;
+    postType: string;
+    platforms: string[];
+    masterCaption: string;
+    platformCaptionsJson: Record<string, string> | null;
+    hashtagsJson: Record<string, string[]> | null;
+  }>,
+): Promise<ApiTemplate | null> {
+  const result = await apiFetch<ApiTemplate>(`/api/templates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return result.ok ? result.data : null;
+}
+
+export async function deleteTemplate(id: string): Promise<boolean> {
+  const result = await apiFetch<unknown>(`/api/templates/${id}`, { method: "DELETE" });
+  return result.ok;
+}
+
 // ─── Health check ─────────────────────────────────────────────────────────────
 
 // Health endpoint returns the direct { status, db } shape (not the success envelope).

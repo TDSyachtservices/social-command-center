@@ -4,7 +4,7 @@ import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
   Link2, ScrollText, MessageCircle, Settings,
   Image as ImageIcon, BarChart2, ChevronDown, Hash, AtSign,
-  Instagram, Facebook,
+  Instagram, Facebook, LayoutTemplate,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,8 +32,9 @@ const sections: NavSection[] = [
     links: [
       { href: "/create-post",       label: "Create Post",       icon: PenSquare  },
       { href: "/media-library",    label: "Media Library",     icon: ImageIcon  },
-      { href: "/hashtag-library",  label: "Hashtag Library",   icon: Hash       },
-      { href: "/mention-library",  label: "Mention Library",   icon: AtSign     },
+      { href: "/hashtag-library",  label: "Hashtag Library",   icon: Hash           },
+      { href: "/mention-library",  label: "Mention Library",   icon: AtSign         },
+      { href: "/templates",        label: "Templates",         icon: LayoutTemplate },
       { href: "/calendar",         label: "Calendar",          icon: Calendar   },
       { href: "/posts",            label: "Posts",             icon: FileText   },
     ],

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Platform } from "@/data/mockPosts";
 import { PlatformSelector } from "./PlatformSelector";
 import { PlatformMediaTabs, type PlatformMediaValue } from "./PlatformMediaTabs";
@@ -14,15 +14,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CalendarIcon, AlertCircle } from "lucide-react";
+import { CalendarIcon, AlertCircle, LayoutTemplate, BookmarkPlus, Loader2, Check } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { listAccounts, createPost, updatePost, schedulePost, publishPost, pollUntilPublishSettled, getPost, type ApiAccount } from "@/lib/api";
+import {
+  listAccounts, createPost, updatePost, schedulePost, publishPost,
+  pollUntilPublishSettled, getPost, type ApiAccount,
+  getTemplate, createTemplate, listTemplates, type ApiTemplate,
+} from "@/lib/api";
 import { validatePostContent, hasBlockingErrors } from "@/lib/platformValidation";
 import { PlatformValidationNotice } from "./PlatformValidationNotice";
 import { AiCaptionReviser } from "./AiCaptionReviser";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 
 const SERVER_TO_PLATFORM: Record<string, Platform> = {
   FACEBOOK: "Facebook",
@@ -42,8 +49,157 @@ interface PostComposerProps {
   editPostId?: string;
 }
 
+// ─── Load Template Dialog ────────────────────────────────────────────────────
+
+function LoadTemplateDialog({
+  open,
+  onClose,
+  onLoad,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onLoad: (template: ApiTemplate) => void;
+}) {
+  const [templates, setTemplates] = useState<ApiTemplate[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setSearch("");
+      setIsLoading(true);
+      listTemplates()
+        .then((data) => setTemplates(data ?? []))
+        .finally(() => setIsLoading(false));
+    }
+  }, [open]);
+
+  const filtered = search
+    ? templates.filter(
+        (t) =>
+          t.name.toLowerCase().includes(search.toLowerCase()) ||
+          (t.description ?? "").toLowerCase().includes(search.toLowerCase()),
+      )
+    : templates;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LayoutTemplate className="w-4 h-4" /> Load Template
+          </DialogTitle>
+        </DialogHeader>
+        <Input
+          placeholder="Search templates…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mt-1"
+        />
+        <div className="flex-1 overflow-y-auto space-y-2 mt-2 min-h-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {templates.length === 0 ? "No templates saved yet." : "No templates match your search."}
+            </p>
+          ) : (
+            filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="w-full text-left p-3 rounded-md border border-border hover:border-primary/50 hover:bg-accent transition-colors"
+                onClick={() => { onLoad(t); onClose(); }}
+              >
+                <p className="font-medium text-sm">{t.name}</p>
+                {t.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{t.description}</p>
+                )}
+                <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                  <span>{t.platforms.join(", ") || "No platforms"}</span>
+                  {t.postType !== "standard" && <span>· {t.postType}</span>}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+        <DialogFooter className="mt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Save as Template Dialog ─────────────────────────────────────────────────
+
+function SaveTemplateDialog({
+  open,
+  onClose,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (name: string, description: string) => void;
+  isSaving: boolean;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    if (open) { setName(""); setDescription(""); }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !isSaving && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookmarkPlus className="w-4 h-4" /> Save as Template
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Template Name <span className="text-destructive">*</span></label>
+            <Input
+              placeholder='e.g. "Weekly Product Post"'
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Description <span className="text-muted-foreground font-normal text-xs">(optional)</span></label>
+            <Textarea
+              placeholder="Describe when to use this template…"
+              className="min-h-[72px] resize-none"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Saves the selected platforms, post type, caption, and hashtags. Media is not saved.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
+          <Button disabled={!name.trim() || isSaving} onClick={() => onSave(name.trim(), description.trim())}>
+            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+            Save Template
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── PostComposer ─────────────────────────────────────────────────────────────
+
 export function PostComposer({ editPostId }: PostComposerProps) {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { toast } = useToast();
 
   const [title, setTitle] = useState("");
@@ -58,7 +214,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("09:00");
 
-  // New post-type fields
   const [postType, setPostType] = useState<PostType>("standard");
   const [albumUrls, setAlbumUrls] = useState<string[]>([]);
   const [eventMeta, setEventMeta] = useState<EventMeta>(EMPTY_EVENT_META);
@@ -66,6 +221,11 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingPost, setIsLoadingPost] = useState(!!editPostId);
+
+  const [loadTemplateOpen, setLoadTemplateOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
 
   const isEditMode = !!editPostId;
 
@@ -75,15 +235,63 @@ export function PostComposer({ editPostId }: PostComposerProps) {
     });
   }, []);
 
-  // If the platform selection changes such that the current post type is no
-  // longer supported by every selected platform, fall back to Standard
-  // rather than leaving an invalid combination selected. Skip this while a
-  // post is still loading for edit, so we don't clobber the restored type.
   useEffect(() => {
     if (isLoadingPost) return;
     const allowed = getAllowedPostTypes(platforms);
     if (!allowed.includes(postType)) setPostType("standard");
   }, [platforms, isLoadingPost]);
+
+  // Apply a loaded template to form state
+  const applyTemplate = (template: ApiTemplate) => {
+    const tPlatforms = (template.platforms ?? [])
+      .map((p) => SERVER_TO_PLATFORM[p.toUpperCase()])
+      .filter((p): p is Platform => Boolean(p));
+
+    if (tPlatforms.length > 0) setPlatforms(tPlatforms);
+
+    const pt = template.postType;
+    if (pt && ["standard", "album", "story", "reel", "event"].includes(pt)) {
+      setPostType(pt as PostType);
+    }
+
+    if (template.masterCaption) setMasterCaption(template.masterCaption);
+
+    if (template.platformCaptionsJson) {
+      const captions: Record<Platform, string> = {} as Record<Platform, string>;
+      const touched = new Set<Platform>();
+      for (const [key, val] of Object.entries(template.platformCaptionsJson)) {
+        const p = SERVER_TO_PLATFORM[key.toUpperCase()];
+        if (p) { captions[p] = val; touched.add(p); }
+      }
+      if (Object.keys(captions).length > 0) {
+        setPlatformCaptions(captions);
+        setTouchedCaptionPlatforms(touched);
+      }
+    }
+
+    if (template.hashtagsJson) {
+      const hashtags: Record<string, string[]> = {};
+      for (const [key, val] of Object.entries(template.hashtagsJson)) {
+        const p = SERVER_TO_PLATFORM[key.toUpperCase()];
+        if (p) hashtags[p] = val;
+      }
+      if (Object.keys(hashtags).length > 0) setPlatformHashtags(hashtags);
+    }
+
+    setSavedTemplateId(template.id);
+    toast({ title: "Template loaded", description: `"${template.name}" applied to the composer.` });
+  };
+
+  // Load template from query param on mount (only for new posts)
+  useEffect(() => {
+    if (editPostId) return;
+    const params = new URLSearchParams(search);
+    const templateId = params.get("template");
+    if (!templateId) return;
+    getTemplate(templateId).then((t) => {
+      if (t) applyTemplate(t);
+    });
+  }, []);
 
   useEffect(() => {
     if (!editPostId) return;
@@ -97,17 +305,14 @@ export function PostComposer({ editPostId }: PostComposerProps) {
           .filter((p): p is Platform => Boolean(p));
         setPlatforms(postPlatforms);
 
-        // Restore post type
         const pt = post.postType;
         if (pt && ["standard", "album", "story", "reel", "event"].includes(pt)) {
           setPostType(pt as PostType);
         }
 
-        // Restore album URLs
         const addUrls = post.additionalMediaUrls;
         if (Array.isArray(addUrls)) setAlbumUrls(addUrls);
 
-        // Restore metadata
         const meta = post.postMetadataJson;
         if (meta) {
           if (meta.eventName || meta.eventStartTime) {
@@ -185,8 +390,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   );
 
   const buildEffectiveCaption = () => {
-    // Return the master caption without hashtags — hashtags are per-platform and
-    // are baked into each platform's platformCaption by buildPlatformMedia().
     return postType === "event" && eventMeta.eventDescription
       ? eventMeta.eventDescription
       : masterCaption;
@@ -194,17 +397,10 @@ export function PostComposer({ editPostId }: PostComposerProps) {
 
   const buildPlatformMedia = () =>
     platforms
-      // Include any platform that has media, a custom caption, OR hashtags.
-      // Previously platforms with only hashtags were filtered out, silently
-      // dropping those hashtags from the published post.
       .filter((p) => platformMedia[p]?.url || touchedCaptionPlatforms.has(p) || (platformHashtags[p] ?? []).length > 0)
       .map((p) => {
         const tags = platformHashtags[p] ?? [];
         const base = platformCaptions[p]?.trim() || null;
-        // Bake hashtags into platformCaption so they survive the server's
-        // resolveCaption(platformCaption ?? masterCaption) fallback.
-        // If there's no custom caption, use masterCaption as the base so the
-        // platform gets its own copy with the right hashtags appended.
         let platformCaption: string | null = base;
         if (tags.length > 0) {
           const captionBase = base ?? masterCaption;
@@ -276,6 +472,44 @@ export function PostComposer({ editPostId }: PostComposerProps) {
       for (const p of platforms) next[p] = value;
       return next;
     });
+  };
+
+  // ─── Save as Template ────────────────────────────────────────────────────────
+
+  const handleSaveTemplate = async (name: string, description: string) => {
+    setIsSavingTemplate(true);
+    try {
+      const platformCaptionsJson: Record<string, string> = {};
+      for (const p of platforms) {
+        if (platformCaptions[p]) platformCaptionsJson[p.toUpperCase()] = platformCaptions[p];
+      }
+      const hashtagsJson: Record<string, string[]> = {};
+      for (const p of platforms) {
+        if ((platformHashtags[p] ?? []).length > 0) hashtagsJson[p.toUpperCase()] = platformHashtags[p];
+      }
+
+      const created = await createTemplate({
+        name,
+        description: description || undefined,
+        postType,
+        platforms: platforms.map((p) => p.toUpperCase()),
+        masterCaption,
+        platformCaptionsJson: Object.keys(platformCaptionsJson).length > 0 ? platformCaptionsJson : null,
+        hashtagsJson: Object.keys(hashtagsJson).length > 0 ? hashtagsJson : null,
+      });
+
+      if (created) {
+        setSavedTemplateId(created.id);
+        setSaveTemplateOpen(false);
+        toast({ title: "Template saved", description: `"${name}" added to your Templates.` });
+      } else {
+        toast({ title: "Failed to save template", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to save template", variant: "destructive" });
+    } finally {
+      setIsSavingTemplate(false);
+    }
   };
 
   const accountIds = getAccountIds();
@@ -384,12 +618,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
         return;
       }
 
-      // Publishing runs asynchronously on the server (it may need to wait on
-      // platform APIs, e.g. video processing) — the trigger above only confirms
-      // the request was accepted, not that the post actually went out. Poll the
-      // real post status until the server reports a terminal outcome instead of
-      // guessing from the HTTP response, so the toast reflects what really
-      // happened rather than sending the user off to refresh manually.
       toast({ title: "Publishing…", description: `Sending "${title}" to ${platforms.join(" & ")}.` });
       const finalPost = await pollUntilPublishSettled(post.id);
 
@@ -405,8 +633,6 @@ export function PostComposer({ editPostId }: PostComposerProps) {
           variant: "destructive",
         });
       } else {
-        // Still not settled after the poll window — don't claim success or
-        // failure; tell the user honestly and point them at where it'll resolve.
         toast({
           title: "Still publishing",
           description: `"${title}" is taking longer than usual. It'll finish in the background — check the Posts page for the final status.`,
@@ -436,206 +662,248 @@ export function PostComposer({ editPostId }: PostComposerProps) {
   }
 
   return (
-    <div className="grid lg:grid-cols-5 gap-6">
-      <div className="lg:col-span-3 space-y-6">
-        <Card>
-          <CardContent className="p-6 space-y-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Internal Title <span className="text-destructive">*</span></label>
-              <Input
-                placeholder="e.g., Q3 Teak Decking Showcase"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-              />
-            </div>
+    <>
+      <div className="grid lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-3 space-y-6">
+          <Card>
+            <CardContent className="p-6 space-y-6">
 
-            <PlatformSelector selectedPlatforms={platforms} onChange={setPlatforms} />
+              {/* Template toolbar */}
+              {!isEditMode && (
+                <div className="flex items-center gap-2 pb-1 border-b">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => setLoadTemplateOpen(true)}
+                  >
+                    <LayoutTemplate className="w-3.5 h-3.5" />
+                    Load Template
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSaveTemplateOpen(true)}
+                  >
+                    {savedTemplateId ? (
+                      <Check className="w-3.5 h-3.5 text-green-600" />
+                    ) : (
+                      <BookmarkPlus className="w-3.5 h-3.5" />
+                    )}
+                    {savedTemplateId ? "Saved as Template" : "Save as Template"}
+                  </Button>
+                </div>
+              )}
 
-            {noConnectedAccounts && (
-              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>No connected account found for the selected platform(s). <button className="underline font-medium" onClick={() => setLocation("/connected-accounts")}>Connect an account</button> first.</span>
-              </div>
-            )}
-
-            <PostTypeSelector
-              value={postType}
-              onChange={setPostType}
-              availablePlatforms={platforms}
-            />
-
-            {/* Album uploader */}
-            {postType === "album" && (
-              <AlbumUploader
-                urls={albumUrls}
-                onChange={setAlbumUrls}
-                label="Album / Carousel Photos"
-                maxItems={10}
-                minItems={2}
-              />
-            )}
-
-            {/* Event fields */}
-            {postType === "event" && (
-              <EventFields value={eventMeta} onChange={setEventMeta} />
-            )}
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                {postType === "event" ? "Post Caption" : "Master Caption"}
-                {captionRequired && <span className="text-destructive"> *</span>}
-                {!captionRequired && <span className="text-muted-foreground font-normal text-xs ml-1">(optional — you have media)</span>}
-              </label>
-              <Textarea
-                placeholder={
-                  postType === "event"
-                    ? "Promotional text for the event post…"
-                    : captionRequired
-                    ? "Write your main message here..."
-                    : "Caption (optional)…"
-                }
-                className="min-h-[120px]"
-                value={masterCaption}
-                onChange={e => setMasterCaption(e.target.value)}
-              />
-              <div className="flex justify-between items-center">
-                <AiCaptionReviser
-                  caption={masterCaption}
-                  platforms={platforms}
-                  onAccept={(revised) => setMasterCaption(revised)}
-                  disabled={isSubmitting}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Internal Title <span className="text-destructive">*</span></label>
+                <Input
+                  placeholder="e.g., Q3 Teak Decking Showcase"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
                 />
-                <span className="text-xs text-muted-foreground">{masterCaption.length} chars</span>
               </div>
-            </div>
 
-            <HashtagPicker
-              platforms={platforms}
-              platformHashtags={platformHashtags}
-              onChange={handleHashtagChange}
-            />
+              <PlatformSelector selectedPlatforms={platforms} onChange={setPlatforms} />
 
-            <MentionPicker
-              platforms={platforms}
-              platformMentions={platformMentions}
-              onChange={handleMentionChange}
-            />
+              {noConnectedAccounts && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>No connected account found for the selected platform(s). <button className="underline font-medium" onClick={() => setLocation("/connected-accounts")}>Connect an account</button> first.</span>
+                </div>
+              )}
 
-            {/* Per-platform media — hidden for album (uses AlbumUploader) */}
-            {postType !== "album" && (
-              <PlatformMediaTabs
-                platforms={platforms}
-                platformMedia={platformMedia}
-                onChange={handlePlatformMediaChange}
-                onApplyToAll={handleApplyMediaToAll}
-                onUploadPendingChange={handleUploadPendingChange}
+              <PostTypeSelector
+                value={postType}
+                onChange={setPostType}
+                availablePlatforms={platforms}
               />
-            )}
 
-            {hasPendingMediaUploads && (
-              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>A media file is still uploading to the server. Scheduling, publishing, and saving are disabled until it finishes.</span>
+              {postType === "album" && (
+                <AlbumUploader
+                  urls={albumUrls}
+                  onChange={setAlbumUrls}
+                  label="Album / Carousel Photos"
+                  maxItems={10}
+                  minItems={2}
+                />
+              )}
+
+              {postType === "event" && (
+                <EventFields value={eventMeta} onChange={setEventMeta} />
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {postType === "event" ? "Post Caption" : "Master Caption"}
+                  {captionRequired && <span className="text-destructive"> *</span>}
+                  {!captionRequired && <span className="text-muted-foreground font-normal text-xs ml-1">(optional — you have media)</span>}
+                </label>
+                <Textarea
+                  placeholder={
+                    postType === "event"
+                      ? "Promotional text for the event post…"
+                      : captionRequired
+                      ? "Write your main message here..."
+                      : "Caption (optional)…"
+                  }
+                  className="min-h-[120px]"
+                  value={masterCaption}
+                  onChange={e => setMasterCaption(e.target.value)}
+                />
+                <div className="flex justify-between items-center">
+                  <AiCaptionReviser
+                    caption={masterCaption}
+                    platforms={platforms}
+                    onAccept={(revised) => setMasterCaption(revised)}
+                    disabled={isSubmitting}
+                  />
+                  <span className="text-xs text-muted-foreground">{masterCaption.length} chars</span>
+                </div>
               </div>
-            )}
 
+              <HashtagPicker
+                platforms={platforms}
+                platformHashtags={platformHashtags}
+                onChange={handleHashtagChange}
+              />
 
-            <PlatformCaptionTabs
+              <MentionPicker
+                platforms={platforms}
+                platformMentions={platformMentions}
+                onChange={handleMentionChange}
+              />
+
+              {postType !== "album" && (
+                <PlatformMediaTabs
+                  platforms={platforms}
+                  platformMedia={platformMedia}
+                  onChange={handlePlatformMediaChange}
+                  onApplyToAll={handleApplyMediaToAll}
+                  onUploadPendingChange={handleUploadPendingChange}
+                />
+              )}
+
+              {hasPendingMediaUploads && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>A media file is still uploading to the server. Scheduling, publishing, and saving are disabled until it finishes.</span>
+                </div>
+              )}
+
+              <PlatformCaptionTabs
+                platforms={platforms}
+                masterCaption={masterCaption}
+                platformCaptions={platformCaptions}
+                platformHashtags={platformHashtags}
+                onChange={handlePlatformCaptionChange}
+              />
+
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Schedule Date</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant={"outline"} className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {date ? format(date, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={date}
+                        onSelect={setDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Time</label>
+                  <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
+                </div>
+              </div>
+
+              {postType === "standard" && <PlatformValidationNotice issues={validationIssues} />}
+
+              {postType === "album" && !albumValid && albumUrls.length > 0 && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>Add at least 2 photos to publish as an album or carousel.</span>
+                </div>
+              )}
+
+              {postType === "event" && !eventValid && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>An Event requires a name and a start date/time.</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 pt-6 border-t">
+                <Button
+                  disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
+                  className="flex-1 min-w-[150px]"
+                  onClick={handleSchedule}
+                >
+                  {isSubmitting ? "Saving…" : hasPendingMediaUploads ? "Uploading media…" : isEditMode ? "Reschedule" : "Schedule Post"}
+                </Button>
+                <Button
+                  disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
+                  variant="outline"
+                  className="flex-1 min-w-[150px]"
+                  onClick={handlePublishNow}
+                >
+                  {isSubmitting ? "Publishing…" : hasPendingMediaUploads ? "Uploading media…" : "Publish Now"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="flex-1 min-w-[150px]"
+                  disabled={title.length === 0 || isSubmitting || hasPendingMediaUploads}
+                  onClick={handleSaveDraft}
+                >
+                  {isSubmitting ? "Saving…" : isEditMode ? "Update Draft" : "Save Draft"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-2">
+          <div className="sticky top-20">
+            <SocialPreviewPanel
               platforms={platforms}
-              masterCaption={masterCaption}
+              masterCaption={previewCaption}
               platformCaptions={platformCaptions}
-              platformHashtags={platformHashtags}
-              onChange={handlePlatformCaptionChange}
+              mediaUrl={
+                postType === "album"
+                  ? (albumUrls[0] ?? null)
+                  : buildPlatformMedia()[0]?.mediaUrl ?? null
+              }
+              platformMedia={platformMedia}
+              date={date ? `${format(date, "PPP")} at ${time}` : "Preview"}
+              accountNames={accountNames}
             />
-
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Schedule Date</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant={"outline"} className="w-full justify-start text-left font-normal">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {date ? format(date, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={date}
-                      onSelect={setDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Time</label>
-                <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
-              </div>
-            </div>
-
-            {postType === "standard" && <PlatformValidationNotice issues={validationIssues} />}
-
-            {postType === "album" && !albumValid && albumUrls.length > 0 && (
-              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>Add at least 2 photos to publish as an album or carousel.</span>
-              </div>
-            )}
-
-            {postType === "event" && !eventValid && (
-              <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>An Event requires a name and a start date/time.</span>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3 pt-6 border-t">
-              <Button
-                disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
-                className="flex-1 min-w-[150px]"
-                onClick={handleSchedule}
-              >
-                {isSubmitting ? "Saving…" : hasPendingMediaUploads ? "Uploading media…" : isEditMode ? "Reschedule" : "Schedule Post"}
-              </Button>
-              <Button
-                disabled={!isFormValid || isSubmitting || hasContentErrors || hasPendingMediaUploads}
-                variant="outline"
-                className="flex-1 min-w-[150px]"
-                onClick={handlePublishNow}
-              >
-                {isSubmitting ? "Publishing…" : hasPendingMediaUploads ? "Uploading media…" : "Publish Now"}
-              </Button>
-              <Button
-                variant="secondary"
-                className="flex-1 min-w-[150px]"
-                disabled={title.length === 0 || isSubmitting || hasPendingMediaUploads}
-                onClick={handleSaveDraft}
-              >
-                {isSubmitting ? "Saving…" : isEditMode ? "Update Draft" : "Save Draft"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="lg:col-span-2">
-        <div className="sticky top-20">
-          <SocialPreviewPanel
-            platforms={platforms}
-            masterCaption={previewCaption}
-            platformCaptions={platformCaptions}
-            mediaUrl={
-              postType === "album"
-                ? (albumUrls[0] ?? null)
-                : buildPlatformMedia()[0]?.mediaUrl ?? null
-            }
-            platformMedia={platformMedia}
-            date={date ? `${format(date, "PPP")} at ${time}` : "Preview"}
-            accountNames={accountNames}
-          />
+          </div>
         </div>
       </div>
-    </div>
+
+      <LoadTemplateDialog
+        open={loadTemplateOpen}
+        onClose={() => setLoadTemplateOpen(false)}
+        onLoad={applyTemplate}
+      />
+
+      <SaveTemplateDialog
+        open={saveTemplateOpen}
+        onClose={() => setSaveTemplateOpen(false)}
+        onSave={handleSaveTemplate}
+        isSaving={isSavingTemplate}
+      />
+    </>
   );
 }

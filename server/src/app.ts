@@ -24,6 +24,7 @@ import notificationsRouter from "./routes/notifications.routes.js";
 import hashtagSetsRouter from "./routes/hashtag-sets.routes.js";
 import mentionContactsRouter from "./routes/mention-contacts.routes.js";
 import mentionGroupsRouter from "./routes/mention-groups.routes.js";
+import templatesRouter from "./routes/templates.routes.js";
 
 const app = express();
 
@@ -122,6 +123,7 @@ app.use("/api/notifications", notificationsRouter);
 app.use("/api/hashtag-sets", hashtagSetsRouter);
 app.use("/api/mention-contacts", mentionContactsRouter);
 app.use("/api/mention-groups", mentionGroupsRouter);
+app.use("/api/templates", templatesRouter);
 
 // ─── Privacy Policy (public, required by OAuth providers) ────────────────────
 app.get("/privacy", (_req: Request, res: Response) => {

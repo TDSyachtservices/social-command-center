@@ -384,3 +384,16 @@ model MentionGroup {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model PostTemplate {
+  id                   String   @id @default(cuid())
+  name                 String
+  description          String?
+  postType             String   @default("standard")
+  platforms            String[] @default([])
+  masterCaption        String   @default("")
+  platformCaptionsJson Json?
+  hashtagsJson         Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
