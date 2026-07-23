@@ -167,7 +167,7 @@ export function HashtagPicker({ platforms, platformHashtags, onChange }: Hashtag
                     <div key={set.id} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{set.name}</p>
+                          <p className="text-sm font-medium">{set.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {set.hashtags.length} hashtag{set.hashtags.length !== 1 ? "s" : ""}
                           </p>
@@ -189,7 +189,7 @@ export function HashtagPicker({ platforms, platformHashtags, onChange }: Hashtag
                         </div>
                       )}
                       <div className="flex flex-wrap gap-1">
-                        {set.hashtags.slice(0, 8).map((t) => (
+                        {set.hashtags.map((t) => (
                           <button
                             key={t}
                             onClick={() => addTags([t])}
@@ -198,11 +198,6 @@ export function HashtagPicker({ platforms, platformHashtags, onChange }: Hashtag
                             {t}
                           </button>
                         ))}
-                        {set.hashtags.length > 8 && (
-                          <span className="text-[11px] text-muted-foreground self-center">
-                            +{set.hashtags.length - 8} more
-                          </span>
-                        )}
                       </div>
                     </div>
                   ))}
