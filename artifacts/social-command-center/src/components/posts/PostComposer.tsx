@@ -241,42 +241,43 @@ export function PostComposer({ editPostId }: PostComposerProps) {
     if (!allowed.includes(postType)) setPostType("standard");
   }, [platforms, isLoadingPost]);
 
-  // Apply a loaded template to form state
+  // Apply a loaded template to form state — fully replaces all template-owned
+  // fields so stale composer state never leaks through.
   const applyTemplate = (template: ApiTemplate) => {
+    // Platforms
     const tPlatforms = (template.platforms ?? [])
       .map((p) => SERVER_TO_PLATFORM[p.toUpperCase()])
       .filter((p): p is Platform => Boolean(p));
+    setPlatforms(tPlatforms);
 
-    if (tPlatforms.length > 0) setPlatforms(tPlatforms);
-
+    // Post type
     const pt = template.postType;
-    if (pt && ["standard", "album", "story", "reel", "event"].includes(pt)) {
-      setPostType(pt as PostType);
-    }
+    setPostType(
+      pt && ["standard", "album", "story", "reel", "event"].includes(pt)
+        ? (pt as PostType)
+        : "standard",
+    );
 
-    if (template.masterCaption) setMasterCaption(template.masterCaption);
+    // Master caption (always overwrite, even with empty string)
+    setMasterCaption(template.masterCaption ?? "");
 
-    if (template.platformCaptionsJson) {
-      const captions: Record<Platform, string> = {} as Record<Platform, string>;
-      const touched = new Set<Platform>();
-      for (const [key, val] of Object.entries(template.platformCaptionsJson)) {
-        const p = SERVER_TO_PLATFORM[key.toUpperCase()];
-        if (p) { captions[p] = val; touched.add(p); }
-      }
-      if (Object.keys(captions).length > 0) {
-        setPlatformCaptions(captions);
-        setTouchedCaptionPlatforms(touched);
-      }
+    // Per-platform captions
+    const captions: Record<Platform, string> = {} as Record<Platform, string>;
+    const touched = new Set<Platform>();
+    for (const [key, val] of Object.entries(template.platformCaptionsJson ?? {})) {
+      const p = SERVER_TO_PLATFORM[key.toUpperCase()];
+      if (p) { captions[p] = val; touched.add(p); }
     }
+    setPlatformCaptions(captions);
+    setTouchedCaptionPlatforms(touched);
 
-    if (template.hashtagsJson) {
-      const hashtags: Record<string, string[]> = {};
-      for (const [key, val] of Object.entries(template.hashtagsJson)) {
-        const p = SERVER_TO_PLATFORM[key.toUpperCase()];
-        if (p) hashtags[p] = val;
-      }
-      if (Object.keys(hashtags).length > 0) setPlatformHashtags(hashtags);
+    // Per-platform hashtags
+    const hashtags: Record<string, string[]> = {};
+    for (const [key, val] of Object.entries(template.hashtagsJson ?? {})) {
+      const p = SERVER_TO_PLATFORM[key.toUpperCase()];
+      if (p) hashtags[p] = val;
     }
+    setPlatformHashtags(hashtags);
 
     setSavedTemplateId(template.id);
     toast({ title: "Template loaded", description: `"${template.name}" applied to the composer.` });

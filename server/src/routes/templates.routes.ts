@@ -10,12 +10,12 @@ const router = Router();
 
 const createTemplateSchema = z.object({
   name: z.string().min(1).max(200),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   postType: z.string().default("standard"),
   platforms: z.array(z.string()).default([]),
   masterCaption: z.string().default(""),
-  platformCaptionsJson: z.record(z.string()).optional().nullable(),
-  hashtagsJson: z.record(z.array(z.string())).optional().nullable(),
+  platformCaptionsJson: z.record(z.string()).nullable().optional(),
+  hashtagsJson: z.record(z.array(z.string())).nullable().optional(),
 });
 
 const updateTemplateSchema = createTemplateSchema.partial();
