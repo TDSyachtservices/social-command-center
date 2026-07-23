@@ -25,6 +25,7 @@ import MentionLibrary from "@/pages/mention-library";
 import InstagramPage from "@/pages/instagram";
 import FacebookPage from "@/pages/facebook";
 import Templates from "@/pages/templates";
+import BestTimeToPost from "@/pages/best-time-to-post";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ function DashboardRouter() {
         <Route path="/publish-logs" component={PublishLogs} />
         <Route path="/comment-logs" component={CommentLogs} />
         <Route path="/settings" component={Settings} />
+        <Route path="/kpi/best-time" component={BestTimeToPost} />
         <Route path="/kpi/metric/:metricId" component={KpiMetric} />
         <Route path="/kpi" component={KPI} />
         <Route path="/hashtag-library" component={HashtagLibrary} />

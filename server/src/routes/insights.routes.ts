@@ -84,4 +84,37 @@ router.get("/instagram/:accountId", async (req: Request<{ accountId: string }>, 
   }
 });
 
+// ─── GET /api/insights/best-time ─────────────────────────────────────────────
+// Aggregates SocialComment timestamps by platform → day-of-week + hour (UTC),
+// returning a heatmap showing when your audience is most active.
+// Looks back 90 days so the data stays relevant.
+router.get("/best-time", async (_req: Request, res: Response) => {
+  type RawRow = { platform: string; day: number; hour: number; count: bigint };
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT
+      platform::text                      AS platform,
+      EXTRACT(DOW  FROM timestamp)::int   AS day,
+      EXTRACT(HOUR FROM timestamp)::int   AS hour,
+      COUNT(*)::bigint                    AS count
+    FROM "SocialComment"
+    WHERE timestamp > NOW() - INTERVAL '90 days'
+    GROUP BY platform, day, hour
+    ORDER BY platform, day, hour
+  `;
+
+  type PlatformData = {
+    heatmap: { day: number; hour: number; count: number }[];
+    totalComments: number;
+  };
+  const result: Record<string, PlatformData> = {};
+  for (const row of rows) {
+    const p = row.platform;
+    if (!result[p]) result[p] = { heatmap: [], totalComments: 0 };
+    const count = Number(row.count);
+    result[p].heatmap.push({ day: row.day, hour: row.hour, count });
+    result[p].totalComments += count;
+  }
+  sendSuccess(res, result);
+});
+
 export default router;

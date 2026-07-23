@@ -4,7 +4,7 @@ import {
   LayoutDashboard, PenSquare, Calendar, FileText, MessageSquare,
   Link2, ScrollText, MessageCircle, Settings,
   Image as ImageIcon, BarChart2, ChevronDown, Hash, AtSign,
-  Instagram, Facebook, LayoutTemplate,
+  Instagram, Facebook, LayoutTemplate, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +42,8 @@ const sections: NavSection[] = [
   {
     label: "KPI",
     links: [
-      { href: "/kpi", label: "KPI Dashboard", icon: BarChart2 },
+      { href: "/kpi",            label: "KPI Dashboard",      icon: BarChart2 },
+      { href: "/kpi/best-time",  label: "Best Time to Post",  icon: Clock     },
     ],
   },
   {

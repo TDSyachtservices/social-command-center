@@ -981,6 +981,26 @@ export async function getLatestPlatformStats(
   return result.data[0].followersCount;
 }
 
+// ─── Best Time to Post ────────────────────────────────────────────────────────
+
+export interface BestTimeCell {
+  day: number;
+  hour: number;
+  count: number;
+}
+
+export interface BestTimePlatformData {
+  heatmap: BestTimeCell[];
+  totalComments: number;
+}
+
+export type BestTimeData = Record<string, BestTimePlatformData>;
+
+export async function getBestTimeToPost(): Promise<BestTimeData | null> {
+  const result = await apiFetch<BestTimeData>("/api/insights/best-time");
+  return result.ok ? result.data : null;
+}
+
 // ─── Post Templates ───────────────────────────────────────────────────────────
 
 export interface ApiTemplate {
